@@ -1,5 +1,7 @@
 # Project Structure
 
+Architecture based on [Bulletproof React](https://github.com/alan2207/bulletproof-react) — feature-driven modular structure with co-located code, clear boundaries between features, and shared infrastructure in top-level folders.
+
 ```
 src/
 ├── app/               # App shell: provider, router, route definitions
