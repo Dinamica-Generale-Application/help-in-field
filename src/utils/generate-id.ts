@@ -1,7 +1,10 @@
 /**
- * Genera un ID univoco senza dipendere da crypto.getRandomValues.
- * Sostituisce uuid v4 che richiede polyfill in React Native.
+ * ID generation utility — wrapper around crypto.randomUUID().
+ */
+
+/**
+ * Generates a unique UUID v4 identifier.
  */
 export function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substring(2, 12);
+  return crypto.randomUUID();
 }

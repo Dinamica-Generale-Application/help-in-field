@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #1976D2;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #424242;
+  --color-secondary-foreground: #ffffff;
+  --color-background: #f5f5f5;
+  --color-foreground: #1a1a1a;
+  --color-muted: #f5f5f5;
+  --color-muted-foreground: #666666;
+  --color-border: #e0e0e0;
+  --color-input: #e0e0e0;
+  --color-ring: #1976D2;
+  --color-destructive: #D32F2F;
+  --color-destructive-foreground: #ffffff;
+  --color-accent: #f0f0f0;
+  --color-accent-foreground: #1a1a1a;
+  --color-card: #ffffff;
+  --color-card-foreground: #1a1a1a;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #1a1a1a;
+  --color-success: #2E7D32;
+  --color-warning: #F57F17;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+}
+
+/* Prevent horizontal scroll at any viewport width */
+html,
+body {
+  overflow-x: hidden;
+}
+
+/* Global focus-visible ring for all interactive elements */
+:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
