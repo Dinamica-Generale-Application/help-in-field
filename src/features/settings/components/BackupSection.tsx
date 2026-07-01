@@ -1,11 +1,13 @@
 /**
  * BackupSection — export/import backup and delete all data functionality.
+ * Uses Radix Dialog for accessible modals with focus trap.
  */
 
 import { useCallback, useRef, useState } from 'react';
 import { useReportStore } from '@/features/reports/stores/reportStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { exportBackup, importBackup } from '../utils/backup';
+import { Dialog, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/Dialog';
 
 type DialogState =
   | { type: 'none' }
@@ -163,137 +165,113 @@ export function BackupSection() {
         </p>
       )}
 
-      {/* Dialogs */}
-      {dialog.type !== 'none' && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="backup-dialog-title"
-        >
-          <div className="fixed inset-0 bg-black/50" onClick={closeDialog} aria-hidden="true" />
+      {/* Import confirmation dialog */}
+      <Dialog open={dialog.type === 'import-confirm'} onOpenChange={(open) => { if (!open) closeDialog(); }}>
+        {dialog.type === 'import-confirm' && (
+          <>
+            <DialogTitle>Conferma Importazione</DialogTitle>
+            <DialogDescription>
+              Trovati <span className="font-medium text-foreground">{dialog.newCount}</span> nuovi rapporti da importare.
+              {dialog.skippedCount > 0 && (
+                <> ({dialog.skippedCount} già presenti, saranno ignorati.)</>
+              )}
+            </DialogDescription>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Procedere con l'importazione?
+            </p>
+            <DialogFooter>
+              <button
+                type="button"
+                onClick={closeDialog}
+                className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary min-h-[44px]"
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={dialog.onConfirm}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary min-h-[44px]"
+              >
+                Importa
+              </button>
+            </DialogFooter>
+          </>
+        )}
+      </Dialog>
 
-          <div className="relative z-10 mx-4 w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg">
-            {/* Import confirmation dialog */}
-            {dialog.type === 'import-confirm' && (
-              <>
-                <h3 id="backup-dialog-title" className="text-lg font-semibold text-foreground">
-                  Conferma Importazione
-                </h3>
-                <p className="mt-3 text-sm text-muted-foreground">
-                  Trovati <span className="font-medium text-foreground">{dialog.newCount}</span> nuovi rapporti da importare.
-                  {dialog.skippedCount > 0 && (
-                    <> ({dialog.skippedCount} già presenti, saranno ignorati.)</>
-                  )}
-                </p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Procedere con l'importazione?
-                </p>
-                <div className="mt-6 flex justify-end gap-3">
-                  <button
-                    type="button"
-                    onClick={closeDialog}
-                    className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary min-h-[44px]"
-                  >
-                    Annulla
-                  </button>
-                  <button
-                    type="button"
-                    onClick={dialog.onConfirm}
-                    className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary min-h-[44px]"
-                  >
-                    Importa
-                  </button>
-                </div>
-              </>
-            )}
+      {/* Import error dialog */}
+      <Dialog open={dialog.type === 'import-error'} onOpenChange={(open) => { if (!open) closeDialog(); }}>
+        {dialog.type === 'import-error' && (
+          <>
+            <DialogTitle className="text-destructive">Errore Importazione</DialogTitle>
+            <DialogDescription>{dialog.message}</DialogDescription>
+            <DialogFooter>
+              <button
+                type="button"
+                onClick={closeDialog}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary min-h-[44px]"
+              >
+                Chiudi
+              </button>
+            </DialogFooter>
+          </>
+        )}
+      </Dialog>
 
-            {/* Import error dialog */}
-            {dialog.type === 'import-error' && (
-              <>
-                <h3 id="backup-dialog-title" className="text-lg font-semibold text-destructive">
-                  Errore Importazione
-                </h3>
-                <p className="mt-3 text-sm text-muted-foreground">
-                  {dialog.message}
-                </p>
-                <div className="mt-6 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={closeDialog}
-                    className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary min-h-[44px]"
-                  >
-                    Chiudi
-                  </button>
-                </div>
-              </>
-            )}
+      {/* Delete first confirmation */}
+      <Dialog open={dialog.type === 'delete-first'} onOpenChange={(open) => { if (!open) closeDialog(); }}>
+        <DialogTitle>Cancella tutti i dati</DialogTitle>
+        <DialogDescription>
+          Sei sicuro di voler cancellare tutti i dati?
+        </DialogDescription>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Verranno eliminati tutti i rapporti ({reports.length}) e le impostazioni.
+        </p>
+        <DialogFooter>
+          <button
+            type="button"
+            onClick={closeDialog}
+            className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary min-h-[44px]"
+          >
+            Annulla
+          </button>
+          <button
+            type="button"
+            onClick={handleDeleteFirstConfirm}
+            className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground transition-colors hover:bg-destructive/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary min-h-[44px]"
+          >
+            Sì, cancella
+          </button>
+        </DialogFooter>
+      </Dialog>
 
-            {/* Delete first confirmation */}
-            {dialog.type === 'delete-first' && (
-              <>
-                <h3 id="backup-dialog-title" className="text-lg font-semibold text-foreground">
-                  Cancella tutti i dati
-                </h3>
-                <p className="mt-3 text-sm text-muted-foreground">
-                  Sei sicuro di voler cancellare tutti i dati?
-                </p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Verranno eliminati tutti i rapporti ({reports.length}) e le impostazioni.
-                </p>
-                <div className="mt-6 flex justify-end gap-3">
-                  <button
-                    type="button"
-                    onClick={closeDialog}
-                    className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary min-h-[44px]"
-                  >
-                    Annulla
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDeleteFirstConfirm}
-                    className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground transition-colors hover:bg-destructive/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary min-h-[44px]"
-                  >
-                    Sì, cancella
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* Delete second (final) confirmation */}
-            {dialog.type === 'delete-second' && (
-              <>
-                <h3 id="backup-dialog-title" className="text-lg font-semibold text-destructive">
-                  Conferma eliminazione
-                </h3>
-                <p className="mt-3 text-sm text-muted-foreground">
-                  <strong className="text-foreground">Questa azione è irreversibile.</strong>
-                </p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Tutti i rapporti e le impostazioni verranno eliminati definitivamente.
-                  Si consiglia di esportare un backup prima di procedere.
-                </p>
-                <div className="mt-6 flex justify-end gap-3">
-                  <button
-                    type="button"
-                    onClick={closeDialog}
-                    className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary min-h-[44px]"
-                  >
-                    Annulla
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDeleteFinalConfirm}
-                    className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground transition-colors hover:bg-destructive/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary min-h-[44px]"
-                  >
-                    Conferma eliminazione
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Delete second (final) confirmation */}
+      <Dialog open={dialog.type === 'delete-second'} onOpenChange={(open) => { if (!open) closeDialog(); }}>
+        <DialogTitle className="text-destructive">Conferma eliminazione</DialogTitle>
+        <DialogDescription>
+          <strong className="text-foreground">Questa azione è irreversibile.</strong>
+        </DialogDescription>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Tutti i rapporti e le impostazioni verranno eliminati definitivamente.
+          Si consiglia di esportare un backup prima di procedere.
+        </p>
+        <DialogFooter>
+          <button
+            type="button"
+            onClick={closeDialog}
+            className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary min-h-[44px]"
+          >
+            Annulla
+          </button>
+          <button
+            type="button"
+            onClick={handleDeleteFinalConfirm}
+            className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground transition-colors hover:bg-destructive/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary min-h-[44px]"
+          >
+            Conferma eliminazione
+          </button>
+        </DialogFooter>
+      </Dialog>
     </section>
   );
 }

@@ -24,6 +24,7 @@ export function ReportListItem({ report }: ReportListItemProps) {
 
   async function handleExportPdf(e: React.MouseEvent) {
     e.stopPropagation();
+    e.preventDefault();
     setPdfLoading(true);
     try {
       const html = generateHtmlTemplate(report);
@@ -36,12 +37,28 @@ export function ReportListItem({ report }: ReportListItemProps) {
     }
   }
 
+  function handleRowClick(e: React.MouseEvent) {
+    // Avoid navigating if user clicked the PDF button area
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-pdf-button]')) return;
+    navigate(`/reports/${report.id}`);
+  }
+
+  function handleRowKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      navigate(`/reports/${report.id}`);
+    }
+  }
+
   return (
-    <button
-      type="button"
-      onClick={() => navigate(`/reports/${report.id}`)}
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={handleRowClick}
+      onKeyDown={handleRowKeyDown}
       className={cn(
-        'flex w-full items-center gap-3 rounded-lg border border-border bg-card p-4 text-left transition-colors',
+        'flex w-full items-center gap-3 rounded-lg border border-border bg-card p-4 text-left transition-colors cursor-pointer',
         'hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
         'min-h-[44px]'
       )}
@@ -72,6 +89,7 @@ export function ReportListItem({ report }: ReportListItemProps) {
       {/* PDF button */}
       <button
         type="button"
+        data-pdf-button
         onClick={handleExportPdf}
         disabled={pdfLoading}
         className={cn(
@@ -85,6 +103,6 @@ export function ReportListItem({ report }: ReportListItemProps) {
       >
         <FileText className="h-5 w-5" aria-hidden="true" />
       </button>
-    </button>
+    </div>
   );
 }

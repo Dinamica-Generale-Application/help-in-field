@@ -18,6 +18,7 @@ import { DeviceSection } from './DeviceSection';
 import { AttachmentSection } from './AttachmentSection';
 import { SpeechButton } from './SpeechButton';
 import { GpsButton, type GpsResult } from './GpsButton';
+import { Dialog, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/Dialog';
 import { generateId } from '@/utils/generate-id';
 import { parseItalianNumber } from '@/utils/format';
 
@@ -720,32 +721,31 @@ export function ReportForm({ reportId }: ReportFormProps) {
       </div>
 
       {/* Navigation blocker dialog */}
-      {blocker.state === 'blocked' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-labelledby="unsaved-dialog-title">
-          <div className="bg-background rounded-lg shadow-lg p-6 max-w-sm mx-4 space-y-4">
-            <h3 id="unsaved-dialog-title" className="font-semibold text-lg">Modifiche non salvate</h3>
-            <p className="text-sm text-muted-foreground">
-              Hai modifiche non salvate. Vuoi davvero uscire? Le modifiche verranno perse.
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => blocker.reset?.()}
-                className="rounded-md border border-input px-4 py-2 text-sm font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring min-h-[44px]"
-              >
-                Resta
-              </button>
-              <button
-                type="button"
-                onClick={() => blocker.proceed?.()}
-                className="rounded-md bg-destructive text-destructive-foreground px-4 py-2 text-sm font-medium hover:bg-destructive/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring min-h-[44px]"
-              >
-                Esci
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Dialog
+        open={blocker.state === 'blocked'}
+        onOpenChange={(open) => { if (!open) blocker.reset?.(); }}
+      >
+        <DialogTitle>Modifiche non salvate</DialogTitle>
+        <DialogDescription>
+          Hai modifiche non salvate. Vuoi davvero uscire? Le modifiche verranno perse.
+        </DialogDescription>
+        <DialogFooter>
+          <button
+            type="button"
+            onClick={() => blocker.reset?.()}
+            className="rounded-md border border-input px-4 py-2 text-sm font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring min-h-[44px]"
+          >
+            Resta
+          </button>
+          <button
+            type="button"
+            onClick={() => blocker.proceed?.()}
+            className="rounded-md bg-destructive text-destructive-foreground px-4 py-2 text-sm font-medium hover:bg-destructive/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring min-h-[44px]"
+          >
+            Esci
+          </button>
+        </DialogFooter>
+      </Dialog>
     </div>
   );
 }

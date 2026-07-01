@@ -1,6 +1,7 @@
 import { Outlet, NavLink } from 'react-router-dom';
 import { ClipboardList, Map, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { StorageWarning } from '@/components/ui/StorageWarning';
 
 const navItems = [
   { to: '/', label: 'Rapporti', icon: ClipboardList },
@@ -41,6 +42,7 @@ export function AppLayout() {
 
       {/* Main content */}
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-4">
+        <StorageWarning />
         <Outlet />
       </main>
     </div>
