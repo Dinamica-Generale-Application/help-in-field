@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { NotFoundRoute } from './routes/NotFoundRoute';
 import { ReportListRoute } from '@/features/reports/routes/ReportListRoute';
@@ -21,34 +21,28 @@ function MapFallback() {
   );
 }
 
+const router = createBrowserRouter([
+  {
+    element: <AppLayout />,
+    children: [
+      { index: true, element: <ReportListRoute /> },
+      { path: 'reports/new', element: <ReportNewRoute /> },
+      { path: 'reports/:id', element: <ReportDetailRoute /> },
+      { path: 'reports/:id/edit', element: <ReportEditRoute /> },
+      {
+        path: 'map',
+        element: (
+          <Suspense fallback={<MapFallback />}>
+            <MapRoute />
+          </Suspense>
+        ),
+      },
+      { path: 'settings', element: <SettingsRoute /> },
+      { path: '*', element: <NotFoundRoute /> },
+    ],
+  },
+]);
+
 export function AppRouter() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route element={<AppLayout />}>
-          {/* Report routes */}
-          <Route index element={<ReportListRoute />} />
-          <Route path="reports/new" element={<ReportNewRoute />} />
-          <Route path="reports/:id" element={<ReportDetailRoute />} />
-          <Route path="reports/:id/edit" element={<ReportEditRoute />} />
-
-          {/* Map (lazy loaded) */}
-          <Route
-            path="map"
-            element={
-              <Suspense fallback={<MapFallback />}>
-                <MapRoute />
-              </Suspense>
-            }
-          />
-
-          {/* Settings */}
-          <Route path="settings" element={<SettingsRoute />} />
-
-          {/* 404 */}
-          <Route path="*" element={<NotFoundRoute />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
-  );
+  return <RouterProvider router={router} />;
 }
