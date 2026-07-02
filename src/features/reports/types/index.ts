@@ -26,14 +26,18 @@ export interface Device {
 }
 
 /**
- * Attachment entity — photo attached to a report, stored as base64 data URL.
+ * Attachment entity — photo or video attached to a report.
+ * The actual binary data is stored in IndexedDB (via attachmentDb).
+ * Only metadata is kept in localStorage with the report.
  */
 export interface Attachment {
   id: string;
-  dataUrl: string;
+  type: 'image' | 'video';
+  /** Object URL for display (transient, regenerated from IndexedDB) */
+  dataUrl?: string;
   description?: string;
-  originalSize: number;
-  compressedSize: number;
+  mimeType: string;
+  size: number;
 }
 
 /**
@@ -65,6 +69,7 @@ export interface Report {
   // Costi input
   hoursWorked: number;
   kilometers?: number;
+  otherExpenses?: number;
   discountPercent: number;
   payment?: PaymentStatus;
 
@@ -77,10 +82,6 @@ export interface Report {
   // Costi calcolati (denormalizzati per il PDF)
   hourlyTotal?: number;
   kilometerTotal?: number;
-  subtotal?: number;
-  discountAmount?: number;
-  taxableAmount?: number;
-  vatAmount?: number;
   grandTotal?: number;
 
   // Metadata

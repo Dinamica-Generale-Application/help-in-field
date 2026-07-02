@@ -7,7 +7,6 @@ interface CostSummaryProps {
 
 /**
  * Mostra il breakdown costi aggiornato in tempo reale.
- * Non renderizza nulla se breakdown è null (ore = 0 o non compilate).
  */
 export function CostSummary({ breakdown }: CostSummaryProps) {
   if (!breakdown) return null;
@@ -15,10 +14,9 @@ export function CostSummary({ breakdown }: CostSummaryProps) {
   const rows = [
     { label: 'Costo ore', value: breakdown.hourlyTotal },
     { label: 'Costo km', value: breakdown.kilometerTotal },
-    { label: 'Subtotale', value: breakdown.subtotal },
-    { label: 'Sconto', value: -breakdown.discountAmount },
-    { label: 'Imponibile', value: breakdown.taxableAmount },
-    { label: 'IVA (22%)', value: breakdown.vatAmount },
+    ...(breakdown.otherExpenses > 0
+      ? [{ label: 'Altro', value: breakdown.otherExpenses }]
+      : []),
   ];
 
   return (

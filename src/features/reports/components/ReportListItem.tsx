@@ -9,7 +9,9 @@ import { FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/format';
 import { generateHtmlTemplate, generatePdfFilename } from '../utils/pdf-export';
+import { getLogoDataUrl } from '../utils/logo';
 import { generateAndDownloadPdf } from '@/lib/html2pdf';
+import { useSettingsStore } from '@/features/settings/stores/settingsStore';
 import type { Report } from '../types';
 
 interface ReportListItemProps {
@@ -27,7 +29,8 @@ export function ReportListItem({ report }: ReportListItemProps) {
     e.preventDefault();
     setPdfLoading(true);
     try {
-      const html = generateHtmlTemplate(report);
+      const logoDataUrl = await getLogoDataUrl();
+      const html = await generateHtmlTemplate(report, logoDataUrl, useSettingsStore.getState().operatorCode);
       const filename = generatePdfFilename(report);
       await generateAndDownloadPdf(html, filename);
     } catch {

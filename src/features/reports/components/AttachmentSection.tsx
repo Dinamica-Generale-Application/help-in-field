@@ -1,30 +1,36 @@
-import { useCallback, useRef } from 'react';
-import { Camera, ImagePlus, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Camera, ImagePlus, Video, X } from 'lucide-react';
 import type { Attachment } from '../types';
-import { useImageCompression } from '../hooks/useImageCompression';
 import { generateId } from '@/utils/generate-id';
 import { MAX_ATTACHMENTS } from '@/config/constants';
+import { saveAttachment, getAttachmentUrl, deleteAttachment } from '@/lib/attachmentDb';
+import { compressImage } from '@/utils/image';
 
 interface AttachmentSectionProps {
+  reportId: string;
   attachments: Attachment[];
   onChange: (attachments: Attachment[]) => void;
 }
 
 /**
- * Sezione allegati foto — upload multiplo + cattura fotocamera,
- * griglia preview, rimozione, descrizione, compressione automatica.
- * Max 10 allegati.
+ * Sezione allegati — foto e video.
+ * I file sono compressi (foto) e salvati in IndexedDB.
+ * Solo i metadati vengono tenuti nello state/localStorage.
+ * Max 10 allegati totali.
  */
-export function AttachmentSection({ attachments, onChange }: AttachmentSectionProps) {
-  const { isCompressing, compress } = useImageCompression();
+export function AttachmentSection({ reportId, attachments, onChange }: AttachmentSectionProps) {
+  const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   const canAdd = attachments.length < MAX_ATTACHMENTS;
 
-  const handleFiles = useCallback(
+  // Handle photo files (with compression)
+  const handleImageFiles = useCallback(
     async (files: FileList | null) => {
       if (!files || files.length === 0) return;
+      setIsProcessing(true);
 
       const remaining = MAX_ATTACHMENTS - attachments.length;
       const filesToProcess = Array.from(files).slice(0, remaining);
@@ -32,16 +38,33 @@ export function AttachmentSection({ attachments, onChange }: AttachmentSectionPr
 
       for (const file of filesToProcess) {
         try {
-          const { dataUrl, size } = await compress(file);
+          const { dataUrl, size } = await compressImage(file, 1280, 0.7);
+          const id = generateId();
+
+          // Convert data URL to blob for IndexedDB storage
+          const response = await fetch(dataUrl);
+          const blob = await response.blob();
+
+          await saveAttachment({
+            id,
+            reportId,
+            type: 'image',
+            blob,
+            mimeType: 'image/jpeg',
+            description: '',
+            size,
+            createdAt: new Date().toISOString(),
+          });
+
           newAttachments.push({
-            id: generateId(),
+            id,
+            type: 'image',
             dataUrl,
             description: '',
-            originalSize: file.size,
-            compressedSize: size,
+            mimeType: 'image/jpeg',
+            size,
           });
         } catch {
-          // Skip files that fail compression
           console.warn('Compressione fallita per:', file.name);
         }
       }
@@ -49,20 +72,64 @@ export function AttachmentSection({ attachments, onChange }: AttachmentSectionPr
       if (newAttachments.length > 0) {
         onChange([...attachments, ...newAttachments]);
       }
+      setIsProcessing(false);
     },
-    [attachments, compress, onChange],
+    [attachments, onChange, reportId],
   );
 
-  const handleUploadClick = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
+  // Handle video files (no compression, just store)
+  const handleVideoFiles = useCallback(
+    async (files: FileList | null) => {
+      if (!files || files.length === 0) return;
+      setIsProcessing(true);
 
-  const handleCameraClick = useCallback(() => {
-    cameraInputRef.current?.click();
-  }, []);
+      const remaining = MAX_ATTACHMENTS - attachments.length;
+      const filesToProcess = Array.from(files).slice(0, remaining);
+      const newAttachments: Attachment[] = [];
 
-  const removeAttachment = useCallback(
-    (id: string) => {
+      for (const file of filesToProcess) {
+        // Limit video size to 50MB
+        if (file.size > 50 * 1024 * 1024) {
+          alert(`Video "${file.name}" troppo grande (max 50MB).`);
+          continue;
+        }
+
+        const id = generateId();
+
+        await saveAttachment({
+          id,
+          reportId,
+          type: 'video',
+          blob: file,
+          mimeType: file.type || 'video/mp4',
+          description: '',
+          size: file.size,
+          createdAt: new Date().toISOString(),
+        });
+
+        const dataUrl = URL.createObjectURL(file);
+
+        newAttachments.push({
+          id,
+          type: 'video',
+          dataUrl,
+          description: '',
+          mimeType: file.type || 'video/mp4',
+          size: file.size,
+        });
+      }
+
+      if (newAttachments.length > 0) {
+        onChange([...attachments, ...newAttachments]);
+      }
+      setIsProcessing(false);
+    },
+    [attachments, onChange, reportId],
+  );
+
+  const handleRemove = useCallback(
+    async (id: string) => {
+      await deleteAttachment(id);
       onChange(attachments.filter((a) => a.id !== id));
     },
     [attachments, onChange],
@@ -81,7 +148,7 @@ export function AttachmentSection({ attachments, onChange }: AttachmentSectionPr
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="font-medium text-sm">
-          Allegati Foto ({attachments.length}/{MAX_ATTACHMENTS})
+          Allegati ({attachments.length}/{MAX_ATTACHMENTS})
         </h3>
       </div>
 
@@ -89,8 +156,8 @@ export function AttachmentSection({ attachments, onChange }: AttachmentSectionPr
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={handleUploadClick}
-          disabled={!canAdd || isCompressing}
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!canAdd || isProcessing}
           className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
         >
           <ImagePlus className="h-4 w-4" />
@@ -98,30 +165,36 @@ export function AttachmentSection({ attachments, onChange }: AttachmentSectionPr
         </button>
         <button
           type="button"
-          onClick={handleCameraClick}
-          disabled={!canAdd || isCompressing}
+          onClick={() => cameraInputRef.current?.click()}
+          disabled={!canAdd || isProcessing}
           className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
         >
           <Camera className="h-4 w-4" />
           Scatta foto
         </button>
-        {isCompressing && (
+        <button
+          type="button"
+          onClick={() => videoInputRef.current?.click()}
+          disabled={!canAdd || isProcessing}
+          className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
+        >
+          <Video className="h-4 w-4" />
+          Allega video
+        </button>
+        {isProcessing && (
           <span className="self-center text-xs text-muted-foreground">
-            Compressione in corso…
+            Elaborazione in corso…
           </span>
         )}
       </div>
 
-      {/* Hidden inputs */}
+      {/* Hidden file inputs */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
         multiple
-        onChange={(e) => {
-          handleFiles(e.target.files);
-          e.target.value = '';
-        }}
+        onChange={(e) => { handleImageFiles(e.target.files); e.target.value = ''; }}
         className="hidden"
         aria-label="Carica immagini"
       />
@@ -130,12 +203,17 @@ export function AttachmentSection({ attachments, onChange }: AttachmentSectionPr
         type="file"
         accept="image/*"
         capture="environment"
-        onChange={(e) => {
-          handleFiles(e.target.files);
-          e.target.value = '';
-        }}
+        onChange={(e) => { handleImageFiles(e.target.files); e.target.value = ''; }}
         className="hidden"
         aria-label="Scatta foto dalla fotocamera"
+      />
+      <input
+        ref={videoInputRef}
+        type="file"
+        accept="video/*"
+        onChange={(e) => { handleVideoFiles(e.target.files); e.target.value = ''; }}
+        className="hidden"
+        aria-label="Allega video"
       />
 
       {/* Preview grid */}
@@ -145,7 +223,7 @@ export function AttachmentSection({ attachments, onChange }: AttachmentSectionPr
             <AttachmentItem
               key={attachment.id}
               attachment={attachment}
-              onRemove={removeAttachment}
+              onRemove={handleRemove}
               onDescriptionChange={updateDescription}
             />
           ))}
@@ -164,14 +242,50 @@ interface AttachmentItemProps {
 }
 
 function AttachmentItem({ attachment, onRemove, onDescriptionChange }: AttachmentItemProps) {
+  const [objectUrl, setObjectUrl] = useState<string | undefined>(attachment.dataUrl);
+
+  // Load from IndexedDB if no dataUrl (e.g. after page reload)
+  useEffect(() => {
+    if (!attachment.dataUrl) {
+      getAttachmentUrl(attachment.id).then((url) => {
+        if (url) setObjectUrl(url);
+      });
+    }
+    return () => {
+      // Revoke blob URLs on unmount (only non-data URLs)
+      if (objectUrl && objectUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [attachment.id, attachment.dataUrl]);
+
   return (
     <div className="relative rounded-lg border overflow-hidden group">
-      {/* Thumbnail */}
-      <img
-        src={attachment.dataUrl}
-        alt={attachment.description || 'Allegato'}
-        className="w-full aspect-square object-cover"
-      />
+      {/* Thumbnail / Preview */}
+      {attachment.type === 'video' ? (
+        <div className="w-full aspect-square bg-muted flex items-center justify-center">
+          {objectUrl ? (
+            <video
+              src={objectUrl}
+              className="w-full h-full object-cover"
+              muted
+              playsInline
+              preload="metadata"
+            />
+          ) : (
+            <Video className="h-8 w-8 text-muted-foreground" />
+          )}
+          <div className="absolute bottom-8 left-1 bg-black/60 text-white text-[10px] px-1 rounded">
+            Video
+          </div>
+        </div>
+      ) : (
+        <img
+          src={objectUrl || ''}
+          alt={attachment.description || 'Allegato'}
+          className="w-full aspect-square object-cover"
+        />
+      )}
 
       {/* Remove button */}
       <button
@@ -191,7 +305,7 @@ function AttachmentItem({ attachment, onRemove, onDescriptionChange }: Attachmen
           onChange={(e) => onDescriptionChange(attachment.id, e.target.value)}
           placeholder="Descrizione…"
           className="w-full text-xs border-0 border-b border-transparent focus-visible:border-input bg-transparent px-0 py-0.5"
-          aria-label={`Descrizione per allegato`}
+          aria-label="Descrizione allegato"
         />
       </div>
     </div>

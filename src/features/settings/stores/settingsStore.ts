@@ -51,6 +51,10 @@ export const useSettingsStore = create<SettingsStore>()(
         localStorage.removeItem(STORAGE_KEYS.REPORTS);
         localStorage.removeItem(STORAGE_KEYS.SETTINGS);
         localStorage.removeItem(STORAGE_KEYS.VERSION);
+        // Clear IndexedDB attachments
+        import('@/lib/attachmentDb').then(({ clearAllAttachments }) => {
+          clearAllAttachments().catch(() => {});
+        });
         // Reset settings state in memory
         set(DEFAULT_SETTINGS);
       },

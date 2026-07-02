@@ -10,7 +10,9 @@ import { Pencil, FileDown, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDate, formatCurrency } from '@/utils/format';
 import { useReportStore } from '../stores/reportStore';
+import { useSettingsStore } from '@/features/settings/stores/settingsStore';
 import { generateHtmlTemplate, generatePdfFilename } from '../utils/pdf-export';
+import { getLogoDataUrl } from '../utils/logo';
 import { generateAndDownloadPdf } from '@/lib/html2pdf';
 import { DeleteReportDialog } from './DeleteReportDialog';
 import type { Report } from '../types';
@@ -37,14 +39,6 @@ function formatWarranty(warranty: string | undefined): string {
   }
 }
 
-function formatPayment(payment: string | undefined): string {
-  switch (payment) {
-    case 'paid': return 'Pagato';
-    case 'unpaid': return 'Non Pagato';
-    default: return '';
-  }
-}
-
 export function ReportDetail({ report }: ReportDetailProps) {
   const navigate = useNavigate();
   const deleteReport = useReportStore((s) => s.deleteReport);
@@ -56,7 +50,8 @@ export function ReportDetail({ report }: ReportDetailProps) {
   async function handleExportPdf() {
     setPdfLoading(true);
     try {
-      const html = generateHtmlTemplate(report);
+      const logoDataUrl = await getLogoDataUrl();
+      const html = await generateHtmlTemplate(report, logoDataUrl, useSettingsStore.getState().operatorCode);
       const filename = generatePdfFilename(report);
       await generateAndDownloadPdf(html, filename);
     } catch {
@@ -185,20 +180,12 @@ export function ReportDetail({ report }: ReportDetailProps) {
         <div className="space-y-1">
           <CostRow label="Ore lavorate" detail={`${report.hoursWorked} ore`} value={report.hourlyTotal} />
           <CostRow label="Chilometri" detail={`${report.kilometers ?? 0} km`} value={report.kilometerTotal} />
-          <CostRow label="Subtotale" value={report.subtotal} />
-          {report.discountAmount != null && report.discountAmount > 0 && (
-            <CostRow label={`Sconto (${report.discountPercent}%)`} value={-report.discountAmount} />
+          {report.otherExpenses != null && report.otherExpenses > 0 && (
+            <CostRow label="Altro" value={report.otherExpenses} />
           )}
-          <CostRow label="Imponibile" value={report.taxableAmount} />
-          <CostRow label="IVA (22%)" value={report.vatAmount} />
           <div className="border-t border-border pt-2 mt-2">
             <CostRow label="Totale" value={report.grandTotal} bold />
           </div>
-          {report.payment && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              Stato pagamento: <span className="font-medium">{formatPayment(report.payment)}</span>
-            </p>
-          )}
         </div>
       </Section>
 

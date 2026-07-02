@@ -1,6 +1,8 @@
 /**
  * PDF Export — Generates professional HTML template for report PDF export.
  * Ported from old/src/domain/pdf-export.ts, adapted to new schema.
+ *
+ * Attachments are loaded from IndexedDB as data URLs before template generation.
  */
 
 import type { Report, Device, Attachment } from '../types';
@@ -72,25 +74,25 @@ function formatWarranty(warranty: string | undefined): string {
   }
 }
 
-/**
- * Mappa lo stato pagamento alla label italiana.
- */
-function formatPayment(payment: string | undefined): string {
-  switch (payment) {
-    case 'paid': return 'Pagato';
-    case 'unpaid': return 'Non Pagato';
-    default: return '';
-  }
-}
-
 // --- HTML Template ---
 
 /**
  * Generates the full HTML template for the report PDF.
+ * Loads the company logo asynchronously for embedding.
  */
-export function generateHtmlTemplate(report: Report): string {
+export async function generateHtmlTemplate(report: Report, logoDataUrl?: string, operatorCode?: string): Promise<string> {
   const devices = report.devices || [];
   const attachments = report.attachments || [];
+
+  const logoHtml = logoDataUrl
+    ? `<div style="text-align: center; margin-bottom: 15px;">
+        <img src="${logoDataUrl}" alt="Logo" style="max-height: 60px; max-width: 200px;" />
+      </div>`
+    : '';
+
+  // Operatore 1 = from settings (operatorCode), Operatore 2 = report.operator (optional)
+  const operator1 = operatorCode || '';
+  const operator2 = report.operator || '';
 
   return `<!DOCTYPE html>
 <html lang="it">
@@ -103,7 +105,7 @@ export function generateHtmlTemplate(report: Report): string {
       font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
       font-size: 12px;
       color: #333;
-      padding: 20px;
+      padding: 20px 40px;
       line-height: 1.5;
     }
     h1 {
@@ -168,9 +170,11 @@ export function generateHtmlTemplate(report: Report): string {
       page-break-inside: avoid;
     }
     .attachment-item img {
-      width: 100%;
+      max-width: 100%;
       max-height: 380px;
       object-fit: contain;
+      display: block;
+      margin: 0 auto;
       border: 1px solid #ddd;
       border-radius: 4px;
     }
@@ -203,6 +207,7 @@ export function generateHtmlTemplate(report: Report): string {
   </style>
 </head>
 <body>
+  ${logoHtml}
   <h1>Rapporto di Assistenza Tecnica</h1>
 
   <!-- Sezione Dati Cliente -->
@@ -230,9 +235,13 @@ export function generateHtmlTemplate(report: Report): string {
       <span class="field-value">${formatDatePdf(report.interventionDate)}</span>
     </div>
     <div class="field-row">
-      <span class="field-label">Operatore:</span>
-      <span class="field-value">${escapeHtml(report.operator)}</span>
+      <span class="field-label">Operatore 1:</span>
+      <span class="field-value">${escapeHtml(operator1)}</span>
     </div>
+    ${operator2 ? `<div class="field-row">
+      <span class="field-label">Operatore 2:</span>
+      <span class="field-value">${escapeHtml(operator2)}</span>
+    </div>` : ''}
     ${report.interventionLocation ? `<div class="field-row">
       <span class="field-label">Luogo Intervento:</span>
       <span class="field-value">${escapeHtml(report.interventionLocation)}</span>
@@ -296,29 +305,14 @@ export function generateHtmlTemplate(report: Report): string {
           <td>${report.kilometers ?? 0} km × ${KM_RATE.toFixed(2).replace('.', ',')} €/km</td>
           <td>${formatCurrencyPdf(report.kilometerTotal)}</td>
         </tr>
-        <tr>
-          <td>Subtotale</td>
+        ${report.otherExpenses && report.otherExpenses > 0 ? `<tr>
+          <td>Altro</td>
           <td></td>
-          <td>${formatCurrencyPdf(report.subtotal)}</td>
-        </tr>
-        ${report.discountAmount && report.discountAmount > 0 ? `<tr>
-          <td>Sconto (${report.discountPercent}%)</td>
-          <td></td>
-          <td>-${formatCurrencyPdf(report.discountAmount)}</td>
+          <td>${formatCurrencyPdf(report.otherExpenses)}</td>
         </tr>` : ''}
-        <tr>
-          <td>Imponibile</td>
-          <td></td>
-          <td>${formatCurrencyPdf(report.taxableAmount)}</td>
-        </tr>
-        <tr>
-          <td>IVA (22%)</td>
-          <td></td>
-          <td>${formatCurrencyPdf(report.vatAmount)}</td>
-        </tr>
         <tr class="total-row">
           <td>Totale Intervento</td>
-          <td>${formatPayment(report.payment)}</td>
+          <td></td>
           <td>${formatCurrencyPdf(report.grandTotal)}</td>
         </tr>
       </tbody>

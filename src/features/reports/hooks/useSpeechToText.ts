@@ -70,7 +70,7 @@ export function useSpeechToText({
 
     const recognition = new SpeechRecognitionCtor();
     recognition.lang = lang;
-    recognition.continuous = true;
+    recognition.continuous = false;
     recognition.interimResults = true;
 
     recognition.onstart = () => {
@@ -81,14 +81,14 @@ export function useSpeechToText({
       let interim = '';
       let final = '';
 
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      for (let i = 0; i < event.results.length; i++) {
         const result = event.results[i];
         if (result) {
           const transcript = result[0]?.transcript || '';
           if (result.isFinal) {
-            final += transcript;
+            final = transcript;
           } else {
-            interim += transcript;
+            interim = transcript;
           }
         }
       }

@@ -25,7 +25,6 @@ export interface ValidationResult {
 const REQUIRED_FIELDS: Array<{ field: keyof ReportFormData; label: string }> = [
   { field: 'companyName', label: 'Ragione Sociale' },
   { field: 'interventionDate', label: 'Data intervento' },
-  { field: 'operator', label: 'Operatore' },
   { field: 'description', label: 'Descrizione' },
   { field: 'hoursWorked', label: 'Ore lavorate' },
 ];
@@ -81,9 +80,7 @@ export function validateField(field: string, value: unknown): ValidationError | 
       return null;
 
     case 'operator':
-      if (!value || (typeof value === 'string' && value.trim() === '')) {
-        return { field, message: 'Operatore è obbligatorio', type: 'required' };
-      }
+      // Operatore 2 è opzionale, nessuna validazione richiesta
       return null;
 
     case 'description':

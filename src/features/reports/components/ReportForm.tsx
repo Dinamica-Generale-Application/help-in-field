@@ -10,7 +10,6 @@ import type {
   ReportFormData,
 } from '../types';
 import { useReportStore } from '../stores/reportStore';
-import { useSettingsStore } from '@/features/settings/stores/settingsStore';
 import { useCostCalculation } from '../hooks/useCostCalculation';
 import { validateField, validateReport, type ValidationError } from '../utils/validation';
 import { CostSummary } from './CostSummary';
@@ -34,7 +33,6 @@ interface ReportFormProps {
 export function ReportForm({ reportId }: ReportFormProps) {
   const navigate = useNavigate();
   const { addReport, updateReport, getReportById } = useReportStore();
-  const operatorCode = useSettingsStore((s) => s.operatorCode);
 
   // Load existing report or create defaults
   const existingReport = reportId ? getReportById(reportId) : undefined;
@@ -49,7 +47,7 @@ export function ReportForm({ reportId }: ReportFormProps) {
   const [interventionDate, setInterventionDate] = useState(
     existingReport?.interventionDate || new Date().toISOString().split('T')[0]!,
   );
-  const [operator, setOperator] = useState(existingReport?.operator || operatorCode || '');
+  const [operator, setOperator] = useState(existingReport?.operator || '');
   const [interventionLocation, setInterventionLocation] = useState(
     existingReport?.interventionLocation || '',
   );
@@ -73,10 +71,10 @@ export function ReportForm({ reportId }: ReportFormProps) {
   const [kilometersStr, setKilometersStr] = useState(
     existingReport?.kilometers !== undefined ? String(existingReport.kilometers) : '',
   );
-  const [discountPercentStr, setDiscountPercentStr] = useState(
-    existingReport?.discountPercent ? String(existingReport.discountPercent) : '',
+  const [otherExpensesStr, setOtherExpensesStr] = useState(
+    existingReport?.otherExpenses ? String(existingReport.otherExpenses) : '',
   );
-  const [payment, setPayment] = useState<PaymentStatus | ''>(existingReport?.payment || '');
+  const [payment] = useState<PaymentStatus | ''>(existingReport?.payment || '');
   const [notes, setNotes] = useState(existingReport?.notes || '');
   const [attachments, setAttachments] = useState<Attachment[]>(
     existingReport?.attachments || [],
@@ -97,20 +95,20 @@ export function ReportForm({ reportId }: ReportFormProps) {
   // Parse numeric fields
   const hoursWorked = useMemo(() => parseItalianNumber(hoursWorkedStr), [hoursWorkedStr]);
   const kilometers = useMemo(() => parseItalianNumber(kilometersStr), [kilometersStr]);
-  const discountPercent = useMemo(() => parseItalianNumber(discountPercentStr), [discountPercentStr]);
+  const otherExpenses = useMemo(() => parseItalianNumber(otherExpensesStr), [otherExpensesStr]);
 
   // Cost calculation
   const costBreakdown = useCostCalculation(
     isNaN(hoursWorked) ? 0 : hoursWorked,
     isNaN(kilometers) ? 0 : kilometers,
-    isNaN(discountPercent) ? 0 : discountPercent,
+    isNaN(otherExpenses) ? 0 : otherExpenses,
   );
 
   // Build form data
   const buildFormData = useCallback((): ReportFormData => {
     const hours = isNaN(hoursWorked) ? 0 : hoursWorked;
     const km = isNaN(kilometers) ? undefined : kilometers;
-    const discount = isNaN(discountPercent) ? 0 : discountPercent;
+    const other = isNaN(otherExpenses) ? 0 : otherExpenses;
 
     return {
       status,
@@ -129,24 +127,21 @@ export function ReportForm({ reportId }: ReportFormProps) {
       devices,
       hoursWorked: hours,
       kilometers: km,
-      discountPercent: discount,
+      otherExpenses: other || undefined,
+      discountPercent: 0,
       payment: payment || undefined,
       notes: notes.trim() || undefined,
       attachments,
       // Cost fields
       hourlyTotal: costBreakdown?.hourlyTotal,
       kilometerTotal: costBreakdown?.kilometerTotal,
-      subtotal: costBreakdown?.subtotal,
-      discountAmount: costBreakdown?.discountAmount,
-      taxableAmount: costBreakdown?.taxableAmount,
-      vatAmount: costBreakdown?.vatAmount,
       grandTotal: costBreakdown?.grandTotal,
     };
   }, [
     status, companyName, address, phone, interventionDate, operator,
     interventionLocation, interventionLat, interventionLon,
     requestedBy, onBehalfOf, interventionReason,
-    description, devices, hoursWorked, kilometers, discountPercent,
+    description, devices, hoursWorked, kilometers, otherExpenses,
     payment, notes, attachments, costBreakdown,
   ]);
 
@@ -430,20 +425,16 @@ export function ReportForm({ reportId }: ReportFormProps) {
 
           <div className="space-y-1">
             <label htmlFor="operator" className="text-sm font-medium">
-              Operatore <span className="text-destructive">*</span>
+              Operatore 2 (opzionale)
             </label>
             <input
               id="operator"
               type="text"
               value={operator}
               onChange={(e) => { setOperator(e.target.value); markDirty(); }}
-              onBlur={() => handleBlur('operator', operator)}
-              className={inputClasses('operator')}
-              placeholder="Sigla operatore (es. OP1)"
+              className="w-full rounded-md border border-input px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+              placeholder="Sigla secondo operatore (se presente)"
             />
-            {fieldError('operator') && (
-              <p className="text-xs text-destructive">{fieldError('operator')}</p>
-            )}
           </div>
         </div>
 
@@ -617,40 +608,20 @@ export function ReportForm({ reportId }: ReportFormProps) {
           </div>
 
           <div className="space-y-1">
-            <label htmlFor="discountPercent" className="text-sm font-medium">
-              Sconto %
+            <label htmlFor="otherExpenses" className="text-sm font-medium">
+              Altro (€)
             </label>
             <input
-              id="discountPercent"
+              id="otherExpenses"
               type="number"
               min="0"
-              max="100"
-              value={discountPercentStr}
-              onChange={(e) => { setDiscountPercentStr(e.target.value); markDirty(); }}
-              onBlur={() => handleBlur('discountPercent', discountPercent)}
-              className={inputClasses('discountPercent')}
-              placeholder="0 – 100"
+              step="0.01"
+              value={otherExpensesStr}
+              onChange={(e) => { setOtherExpensesStr(e.target.value); markDirty(); }}
+              className="w-full rounded-md border border-input px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+              placeholder="Vitto, spese extra…"
             />
-            {fieldError('discountPercent') && (
-              <p className="text-xs text-destructive">{fieldError('discountPercent')}</p>
-            )}
           </div>
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="payment" className="text-sm font-medium">
-            Stato pagamento
-          </label>
-          <select
-            id="payment"
-            value={payment}
-            onChange={(e) => { setPayment(e.target.value as PaymentStatus | ''); markDirty(); }}
-            className="w-full sm:w-auto rounded-md border border-input px-3 py-2 text-sm bg-background focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-          >
-            <option value="">— Non specificato —</option>
-            <option value="paid">Pagato</option>
-            <option value="unpaid">Non pagato</option>
-          </select>
         </div>
 
         {/* Cost breakdown */}
@@ -681,6 +652,7 @@ export function ReportForm({ reportId }: ReportFormProps) {
           Allegati
         </h2>
         <AttachmentSection
+          reportId={formId}
           attachments={attachments}
           onChange={(newAttachments) => { setAttachments(newAttachments); markDirty(); }}
         />

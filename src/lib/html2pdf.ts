@@ -29,7 +29,7 @@ export async function generateAndDownloadPdf(html: string, filename: string): Pr
 
   try {
     const options = {
-      margin: 0,
+      margin: [10, 15, 10, 15] as unknown as number,
       filename,
       image: { type: 'jpeg' as const, quality: 0.95 },
       html2canvas: { scale: 2, useCORS: true, logging: false },

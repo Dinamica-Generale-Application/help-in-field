@@ -105,9 +105,9 @@ describe('validateField', () => {
     expect(validateField('companyName', 'Acme')).toBeNull();
   });
 
-  it('returns required error for empty operator', () => {
-    expect(validateField('operator', '')?.type).toBe('required');
-    expect(validateField('operator', null)?.type).toBe('required');
+  it('returns null for empty operator (optional)', () => {
+    expect(validateField('operator', '')).toBeNull();
+    expect(validateField('operator', null)).toBeNull();
   });
 
   it('returns required for missing hoursWorked', () => {
@@ -146,10 +146,9 @@ describe('validateReport', () => {
     expect(result.errors.some(e => e.field === 'companyName')).toBe(true);
   });
 
-  it('detects missing operator', () => {
+  it('accepts report with empty operator (optional)', () => {
     const result = validateReport(makeValidReport({ operator: '' }));
-    expect(result.isValid).toBe(false);
-    expect(result.errors.some(e => e.field === 'operator')).toBe(true);
+    expect(result.isValid).toBe(true);
   });
 
   it('detects missing description', () => {
