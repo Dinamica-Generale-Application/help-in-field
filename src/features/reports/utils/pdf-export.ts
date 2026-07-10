@@ -64,6 +64,19 @@ function formatInterventionReason(reason: string | undefined): string {
 }
 
 /**
+ * Mappa il livello rischio caldo alla label italiana.
+ */
+function formatHeatRisk(level: string | undefined): string {
+  switch (level) {
+    case 'none': return 'Nessuno';
+    case 'low': return 'Basso';
+    case 'moderate': return 'Moderato';
+    case 'high': return 'Alto';
+    default: return '';
+  }
+}
+
+/**
  * Mappa lo stato garanzia alla label italiana.
  */
 function formatWarranty(warranty: string | undefined): string {
@@ -257,6 +270,10 @@ export async function generateHtmlTemplate(report: Report, logoDataUrl?: string,
     ${report.interventionReason ? `<div class="field-row">
       <span class="field-label">Motivo Intervento:</span>
       <span class="field-value">${formatInterventionReason(report.interventionReason)}</span>
+    </div>` : ''}
+    ${report.heatRisk ? `<div class="field-row">
+      <span class="field-label">Rischio Caldo:</span>
+      <span class="field-value">${formatHeatRisk(report.heatRisk)}</span>
     </div>` : ''}
     <div class="field-row">
       <span class="field-label">Descrizione:</span>

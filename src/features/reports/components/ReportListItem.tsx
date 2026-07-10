@@ -23,6 +23,7 @@ export function ReportListItem({ report }: ReportListItemProps) {
   const [pdfLoading, setPdfLoading] = useState(false);
 
   const isDraft = report.status === 'draft';
+  const isMission = report.status === 'mission';
 
   async function handleExportPdf(e: React.MouseEvent) {
     e.stopPropagation();
@@ -70,23 +71,35 @@ export function ReportListItem({ report }: ReportListItemProps) {
       {/* Content */}
       <div className="flex-1 min-w-0">
         <p className="truncate font-medium text-foreground">
-          {report.companyName}
+          {report.companyName || report.interventionLocation || 'Nuovo intervento'}
         </p>
-        <p className="text-sm text-muted-foreground">
-          {formatDate(report.interventionDate)}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm text-muted-foreground">
+            {formatDate(report.interventionDate)}
+          </p>
+          {report.heatRisk && (
+            <span
+              className="inline-block w-3 h-3 rounded-full"
+              style={{ backgroundColor: heatRiskColor(report.heatRisk) }}
+              title={`Rischio caldo: ${heatRiskLabel(report.heatRisk)}`}
+              aria-label={`Rischio caldo: ${heatRiskLabel(report.heatRisk)}`}
+            />
+          )}
+        </div>
       </div>
 
       {/* Status chip */}
       <span
         className={cn(
           'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap',
-          isDraft
-            ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-            : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+          isMission
+            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+            : isDraft
+              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+              : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
         )}
       >
-        {isDraft ? 'Bozza' : 'Completato'}
+        {isMission ? 'Missione' : isDraft ? 'Bozza' : 'Completato'}
       </span>
 
       {/* PDF button */}
@@ -108,4 +121,26 @@ export function ReportListItem({ report }: ReportListItemProps) {
       </button>
     </div>
   );
+}
+
+// --- Heat risk helpers ---
+
+function heatRiskColor(level: string): string {
+  switch (level) {
+    case 'none': return '#22c55e';     // green
+    case 'low': return '#eab308';      // yellow
+    case 'moderate': return '#f97316'; // orange
+    case 'high': return '#ef4444';     // red
+    default: return 'transparent';
+  }
+}
+
+function heatRiskLabel(level: string): string {
+  switch (level) {
+    case 'none': return 'Nessuno';
+    case 'low': return 'Basso';
+    case 'moderate': return 'Moderato';
+    case 'high': return 'Alto';
+    default: return '';
+  }
 }

@@ -3,7 +3,7 @@
  */
 
 /** Status of a report */
-export type ReportStatus = 'draft' | 'completed';
+export type ReportStatus = 'draft' | 'completed' | 'mission';
 
 /** Reason for the intervention */
 export type InterventionReason = 'installation' | 'supervision' | 'malfunction' | 'other';
@@ -13,6 +13,9 @@ export type WarrantyStatus = 'in_warranty' | 'out_warranty';
 
 /** Payment status */
 export type PaymentStatus = 'paid' | 'unpaid';
+
+/** Heat risk level */
+export type HeatRiskLevel = 'none' | 'low' | 'moderate' | 'high';
 
 /**
  * Device entity — represents a single device associated with a report.
@@ -61,6 +64,7 @@ export interface Report {
   requestedBy?: string;
   onBehalfOf?: string;
   interventionReason?: InterventionReason;
+  heatRisk?: HeatRiskLevel;
   description: string;
 
   // Dispositivi

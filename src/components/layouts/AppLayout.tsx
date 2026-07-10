@@ -1,10 +1,11 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { ClipboardList, Map, Settings } from 'lucide-react';
+import { ClipboardList, Map, Send, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StorageWarning } from '@/components/ui/StorageWarning';
 
 const navItems = [
   { to: '/', label: 'Rapporti', icon: ClipboardList },
+  { to: '/missions', label: 'Missioni', icon: Send },
   { to: '/map', label: 'Mappa', icon: Map },
   { to: '/settings', label: 'Impostazioni', icon: Settings },
 ] as const;

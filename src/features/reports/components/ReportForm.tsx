@@ -4,6 +4,7 @@ import { Check, RotateCcw, Save } from 'lucide-react';
 import type {
   Attachment,
   Device,
+  HeatRiskLevel,
   InterventionReason,
   PaymentStatus,
   Report,
@@ -62,6 +63,9 @@ export function ReportForm({ reportId }: ReportFormProps) {
   const [onBehalfOf, setOnBehalfOf] = useState(existingReport?.onBehalfOf || '');
   const [interventionReason, setInterventionReason] = useState<InterventionReason | ''>(
     existingReport?.interventionReason || '',
+  );
+  const [heatRisk, setHeatRisk] = useState<HeatRiskLevel | ''>(
+    existingReport?.heatRisk || '',
   );
   const [description, setDescription] = useState(existingReport?.description || '');
   const [devices, setDevices] = useState<Device[]>(existingReport?.devices || []);
@@ -123,6 +127,7 @@ export function ReportForm({ reportId }: ReportFormProps) {
       requestedBy: requestedBy.trim() || undefined,
       onBehalfOf: onBehalfOf.trim() || undefined,
       interventionReason: interventionReason || undefined,
+      heatRisk: heatRisk || undefined,
       description: description.trim(),
       devices,
       hoursWorked: hours,
@@ -140,7 +145,7 @@ export function ReportForm({ reportId }: ReportFormProps) {
   }, [
     status, companyName, address, phone, interventionDate, operator,
     interventionLocation, interventionLat, interventionLon,
-    requestedBy, onBehalfOf, interventionReason,
+    requestedBy, onBehalfOf, interventionReason, heatRisk,
     description, devices, hoursWorked, kilometers, otherExpenses,
     payment, notes, attachments, costBreakdown,
   ]);
@@ -396,6 +401,43 @@ export function ReportForm({ reportId }: ReportFormProps) {
               placeholder="Numero fisso/centralino"
             />
           </div>
+        </div>
+      </section>
+
+      {/* Rischio caldo */}
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Rischio Caldo
+        </h2>
+        <div className="space-y-1">
+          <label htmlFor="heatRisk" className="text-sm font-medium">
+            Livello di rischio
+          </label>
+          <div className="flex items-center gap-2">
+            <select
+              id="heatRisk"
+              value={heatRisk}
+              onChange={(e) => { setHeatRisk(e.target.value as HeatRiskLevel | ''); markDirty(); }}
+              className="flex-1 rounded-md border border-input px-3 py-2 text-sm bg-background focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+            >
+              <option value="">— Non valutato —</option>
+              <option value="none">🟢 Nessuno</option>
+              <option value="low">🟡 Basso</option>
+              <option value="moderate">🟠 Moderato</option>
+              <option value="high">🔴 Alto</option>
+            </select>
+            <a
+              href="https://www.worklimate.it/scelta-mappa/sole-attivita-fisica-moderata/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-md border border-input px-3 py-2 text-sm font-medium hover:bg-accent min-h-[44px] whitespace-nowrap"
+            >
+              🌡️ Worklimate
+            </a>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Consulta la mappa e seleziona il livello di rischio per la tua zona.
+          </p>
         </div>
       </section>
 

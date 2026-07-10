@@ -7,6 +7,8 @@ import { ReportNewRoute } from '@/features/reports/routes/ReportNewRoute';
 import { ReportEditRoute } from '@/features/reports/routes/ReportEditRoute';
 import { ReportDetailRoute } from '@/features/reports/routes/ReportDetailRoute';
 import { SettingsRoute } from '@/features/settings/routes/SettingsRoute';
+import { MissionsRoute } from '@/features/missions/routes/MissionsRoute';
+import { MissionImportRoute } from '@/features/missions/routes/MissionImportRoute';
 
 // Lazy-loaded route for map (heavy dependency: react-leaflet)
 const MapRoute = lazy(() =>
@@ -38,6 +40,8 @@ const router = createBrowserRouter([
         ),
       },
       { path: 'settings', element: <SettingsRoute /> },
+      { path: 'missions', element: <MissionsRoute /> },
+      { path: 'missions/import', element: <MissionImportRoute /> },
       { path: '*', element: <NotFoundRoute /> },
     ],
   },
