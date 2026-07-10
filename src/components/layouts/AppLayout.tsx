@@ -46,6 +46,11 @@ export function AppLayout() {
         <StorageWarning />
         <Outlet />
       </main>
+
+      {/* Footer */}
+      <footer className="border-t border-border py-3 text-center text-xs text-muted-foreground">
+        © {new Date().getFullYear()} Dinamica Generale S.p.A. — v{__APP_VERSION__}
+      </footer>
     </div>
   );
 }
