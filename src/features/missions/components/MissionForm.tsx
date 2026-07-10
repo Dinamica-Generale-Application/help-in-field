@@ -19,8 +19,8 @@ export function MissionForm() {
   const [exported, setExported] = useState(false);
 
   const handleExport = useCallback(async () => {
-    if (!destination.trim() || !product.trim() || !interventionReason) {
-      alert('Compila destinazione, prodotto e motivo intervento.');
+    if (!destination.trim() || !heatRisk) {
+      alert('Compila destinazione e rischio caldo.');
       return;
     }
 
