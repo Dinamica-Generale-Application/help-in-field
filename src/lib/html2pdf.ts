@@ -5,6 +5,18 @@
  */
 
 /**
+ * Loads an image from a dataUrl and returns its natural dimensions.
+ */
+function getImageDimensions(dataUrl: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+/**
  * Generates a PDF from structured report data and triggers download.
  * Uses jsPDF for real text output + image embedding.
  */
@@ -207,15 +219,25 @@ export async function generateAndDownloadPdf(
     addSectionTitle('Allegati');
     for (const att of pdfData.attachments) {
       if (!att.dataUrl) continue;
-      checkPageBreak(80);
       try {
-        // Determine image format from dataUrl
+        // Load image to get natural dimensions
+        const imgDims = await getImageDimensions(att.dataUrl);
         const format = att.dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG';
         const maxImgWidth = contentWidth - 10;
-        const maxImgHeight = 90;
-        // Add image scaled to fit
-        doc.addImage(att.dataUrl, format, marginLeft + 5, y, maxImgWidth, maxImgHeight, undefined, 'MEDIUM');
-        y += maxImgHeight + 3;
+        const maxImgHeight = 120;
+
+        // Calculate scaled dimensions preserving aspect ratio
+        const ratio = imgDims.width / imgDims.height;
+        let imgW = maxImgWidth;
+        let imgH = imgW / ratio;
+        if (imgH > maxImgHeight) {
+          imgH = maxImgHeight;
+          imgW = imgH * ratio;
+        }
+
+        checkPageBreak(imgH + 15);
+        doc.addImage(att.dataUrl, format, marginLeft + 5, y, imgW, imgH, undefined, 'MEDIUM');
+        y += imgH + 3;
         if (att.description) {
           doc.setFont('helvetica', 'italic');
           doc.setFontSize(8);

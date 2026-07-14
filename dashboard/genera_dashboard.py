@@ -1,33 +1,121 @@
 """
-Dashboard Generator — Legge i file .json dei rapporti dalla cartella di rete
-e genera una dashboard HTML interattiva con filtri e statistiche.
+Dashboard Assistenza — Legge i PDF testuali dei rapporti e genera una dashboard HTML.
 
 Uso:
-    python genera_dashboard.py [cartella_rapporti]
+    Doppio click su questo file, oppure:
+    python genera_dashboard.py
 
-Se non specificata, usa: H:\DG_Assistenza\Assistenze\2026_Guaresi
-
-Output: dashboard.html nella stessa cartella (apribile con qualsiasi browser).
+Legge tutti i file rapporto_*.pdf nella stessa cartella e genera dashboard.html.
+Requisiti: Python 3.10+, PyMuPDF (pip install pymupdf)
 """
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from datetime import datetime
 
+try:
+    import fitz  # PyMuPDF
+except ImportError:
+    print("❌ PyMuPDF non installato. Esegui: pip install pymupdf")
+    input("Premi INVIO per chiudere...")
+    sys.exit(1)
+
+
+def extract_report_data(pdf_path: Path) -> dict | None:
+    """Estrae i dati strutturati da un PDF testuale generato dalla webapp."""
+    try:
+        doc = fitz.open(str(pdf_path))
+        text = ""
+        for page in doc:
+            text += page.get_text()
+        doc.close()
+    except Exception:
+        return None
+
+    if not text.strip():
+        return None  # PDF immagine (vecchio formato), skip
+
+    data: dict = {"_source": pdf_path.name}
+
+    # Parse fields using label: value pattern
+    def find_field(label: str) -> str | None:
+        pattern = rf"{re.escape(label)}:\s*(.+?)(?:\n|$)"
+        match = re.search(pattern, text)
+        return match.group(1).strip() if match else None
+
+    data["companyName"] = find_field("Ragione Sociale") or ""
+    data["address"] = find_field("Indirizzo")
+    data["phone"] = find_field("Telefono")
+
+    # Date
+    date_str = find_field("Data")  # DD/MM/YYYY or Data Intervento
+    if not date_str:
+        date_str = find_field("Data Intervento")
+    if date_str:
+        # Convert DD/MM/YYYY to YYYY-MM-DD for sorting
+        match = re.match(r"(\d{2})/(\d{2})/(\d{4})", date_str)
+        if match:
+            data["interventionDate"] = f"{match.group(3)}-{match.group(2)}-{match.group(1)}"
+        else:
+            data["interventionDate"] = date_str
+    else:
+        data["interventionDate"] = ""
+
+    data["operator1"] = find_field("Operatore 1") or ""
+    data["operator2"] = find_field("Operatore 2")
+    data["interventionLocation"] = find_field("Luogo") or find_field("Luogo Intervento")
+    data["requestedBy"] = find_field("Richiesto da")
+    data["onBehalfOf"] = find_field("Per conto di")
+    data["interventionReason"] = find_field("Motivo") or find_field("Motivo Intervento")
+    data["heatRisk"] = find_field("Rischio Caldo")
+    data["description"] = find_field("Descrizione")
+    data["notes"] = find_field("Note")
+
+    # Parse costs from table
+    hours_match = re.search(r"Ore lavorate\s*(\d+[.,]?\d*)\s*ore", text)
+    if hours_match:
+        data["hoursWorked"] = float(hours_match.group(1).replace(",", "."))
+    else:
+        data["hoursWorked"] = 0
+
+    km_match = re.search(r"Chilometri\s*(\d+[.,]?\d*)\s*km", text)
+    if km_match:
+        data["kilometers"] = float(km_match.group(1).replace(",", "."))
+    else:
+        data["kilometers"] = 0
+
+    # Grand total
+    total_match = re.search(r"Totale Intervento\s*([\d.,]+)\s*€", text)
+    if total_match:
+        total_str = total_match.group(1).replace(".", "").replace(",", ".")
+        try:
+            data["grandTotal"] = float(total_str)
+        except ValueError:
+            data["grandTotal"] = 0
+    else:
+        data["grandTotal"] = 0
+
+    # Only return if we got at least a company name or date
+    if data["companyName"] or data["interventionDate"]:
+        return data
+    return None
+
 
 def load_reports(folder: Path) -> list[dict]:
-    """Carica tutti i file .json dalla cartella."""
+    """Carica dati da tutti i PDF rapporto nella cartella."""
     reports = []
-    for f in folder.glob("*.json"):
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            # Validate minimum required fields
-            if "interventionDate" in data and "companyName" in data:
-                reports.append(data)
-        except (json.JSONDecodeError, KeyError):
-            print(f"  ⚠️  Ignorato (formato non valido): {f.name}")
+    pdf_files = sorted(folder.glob("rapporto_*.pdf"))
+
+    for pdf_path in pdf_files:
+        data = extract_report_data(pdf_path)
+        if data:
+            reports.append(data)
+        else:
+            print(f"  ⚠️  Ignorato (vecchio formato o vuoto): {pdf_path.name}")
+
     return reports
 
 
@@ -238,10 +326,10 @@ def generate_dashboard_html(reports: list[dict]) -> str:
     <label>Motivo</label>
     <select id="filterReason">
       <option value="">Tutti</option>
-      <option value="installation">Installazione</option>
-      <option value="supervision">Supervisione</option>
-      <option value="malfunction">Malfunzionamento</option>
-      <option value="other">Altro</option>
+      <option value="Installazione">Installazione</option>
+      <option value="Supervisione">Supervisione</option>
+      <option value="Malfunzionamento">Malfunzionamento</option>
+      <option value="Altro">Altro</option>
     </select>
   </div>
   <div class="filter-group">
@@ -307,7 +395,6 @@ function populateFilters() {{
 function fillSelect(id, values) {{
   const sel = document.getElementById(id);
   const current = sel.value;
-  // Keep first "Tutti" option
   while (sel.options.length > 1) sel.remove(1);
   values.forEach(v => {{
     const opt = document.createElement('option');
@@ -419,10 +506,9 @@ function renderClientsChart(reports) {{
 }}
 
 function renderReasonsChart(reports) {{
-  const reasons = {{ installation: 'Installazione', supervision: 'Supervisione', malfunction: 'Malfunzionamento', other: 'Altro' }};
   const counts = {{}};
   reports.forEach(r => {{
-    const reason = reasons[r.interventionReason] || 'Non specificato';
+    const reason = r.interventionReason || 'Non specificato';
     counts[reason] = (counts[reason] || 0) + 1;
   }});
   const data = Object.entries(counts).map(([k, v]) => ({{ label: k, value: v }}));
@@ -436,7 +522,7 @@ function renderTable(reports) {{
     <tr>
       <td>${{formatDate(r.interventionDate)}}</td>
       <td>${{r.companyName || ''}}</td>
-      <td>${{formatReason(r.interventionReason)}}</td>
+      <td>${{r.interventionReason || ''}}</td>
       <td>${{r.hoursWorked || 0}}</td>
       <td>${{r.kilometers || 0}}</td>
       <td>${{(r.grandTotal || 0).toLocaleString('it-IT', {{minimumFractionDigits:2}})}}&euro;</td>
@@ -455,10 +541,6 @@ function formatMonth(ym) {{
   const months = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
   return `${{months[parseInt(m)-1]}} ${{y}}`;
 }}
-function formatReason(r) {{
-  const map = {{ installation:'Installazione', supervision:'Supervisione', malfunction:'Malfunzionamento', other:'Altro' }};
-  return map[r] || '';
-}}
 
 // --- Init ---
 populateFilters();
@@ -470,29 +552,26 @@ document.querySelectorAll('.filters input, .filters select').forEach(el => {{
 }});
 </script>
 </body>
-</html>""";
+</html>"""
 
 
 def main():
-    # Determine input folder
-    if len(sys.argv) > 1:
-        folder = Path(sys.argv[1])
-    else:
-        folder = Path(r"H:\DG_Assistenza\Assistenze\2026_Guaresi")
-
-    if not folder.exists():
-        print(f"❌ Cartella non trovata: {folder}")
-        sys.exit(1)
+    # Use the folder where this script is located
+    folder = Path(__file__).parent
 
     print(f"📂 Scansione: {folder}")
+    print(f"   Cerco file rapporto_*.pdf...")
+
     reports = load_reports(folder)
 
     if not reports:
-        print("⚠️  Nessun file JSON trovato. Esporta i rapporti dalla webapp (PDF + JSON).")
-        print("   I file JSON vengono scaricati automaticamente insieme al PDF.")
+        print("\n⚠️  Nessun PDF con testo trovato.")
+        print("   I PDF vecchi (formato immagine) non contengono testo estraibile.")
+        print("   Riesporta i rapporti dalla webapp per generare i nuovi PDF testuali.")
+        input("\nPremi INVIO per chiudere...")
         sys.exit(0)
 
-    print(f"✅ Caricati {len(reports)} rapporti")
+    print(f"✅ Estratti dati da {len(reports)} rapporti")
 
     # Generate dashboard
     html = generate_dashboard_html(reports)
@@ -503,7 +582,12 @@ def main():
     print(f"   Aprila con il browser per visualizzare le statistiche.")
 
     # Auto-open in browser
-    os.startfile(str(output_path))
+    try:
+        os.startfile(str(output_path))
+    except Exception:
+        pass
+
+    input("\nPremi INVIO per chiudere...")
 
 
 if __name__ == "__main__":
