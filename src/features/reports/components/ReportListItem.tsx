@@ -8,10 +8,10 @@ import { useNavigate } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/format';
-import { generateHtmlTemplate, generatePdfFilename } from '../utils/pdf-export';
+import { generatePdfFilename } from '../utils/pdf-export';
+import { buildPdfData } from '../utils/pdf-data';
 import { getLogoDataUrl } from '../utils/logo';
 import { generateAndDownloadPdf } from '@/lib/html2pdf';
-import { downloadReportJson } from '../utils/json-export';
 import { useSettingsStore } from '@/features/settings/stores/settingsStore';
 import type { Report } from '../types';
 
@@ -33,11 +33,9 @@ export function ReportListItem({ report }: ReportListItemProps) {
     try {
       const operatorCode = useSettingsStore.getState().operatorCode;
       const logoDataUrl = await getLogoDataUrl();
-      const html = await generateHtmlTemplate(report, logoDataUrl, operatorCode);
       const filename = generatePdfFilename(report);
-      await generateAndDownloadPdf(html, filename);
-      // Download JSON after a delay so the PDF download has time to register
-      setTimeout(() => downloadReportJson(report, operatorCode), 1500);
+      const pdfData = buildPdfData(report, operatorCode, logoDataUrl || undefined);
+      await generateAndDownloadPdf('', filename, pdfData);
     } catch {
       window.print();
     } finally {

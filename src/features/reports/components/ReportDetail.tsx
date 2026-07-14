@@ -11,10 +11,10 @@ import { cn } from '@/lib/utils';
 import { formatDate, formatCurrency } from '@/utils/format';
 import { useReportStore } from '../stores/reportStore';
 import { useSettingsStore } from '@/features/settings/stores/settingsStore';
-import { generateHtmlTemplate, generatePdfFilename } from '../utils/pdf-export';
+import { generatePdfFilename } from '../utils/pdf-export';
+import { buildPdfData } from '../utils/pdf-data';
 import { getLogoDataUrl } from '../utils/logo';
 import { generateAndDownloadPdf } from '@/lib/html2pdf';
-import { downloadReportJson } from '../utils/json-export';
 import { DeleteReportDialog } from './DeleteReportDialog';
 import type { Report } from '../types';
 
@@ -53,13 +53,10 @@ export function ReportDetail({ report }: ReportDetailProps) {
     try {
       const operatorCode = useSettingsStore.getState().operatorCode;
       const logoDataUrl = await getLogoDataUrl();
-      const html = await generateHtmlTemplate(report, logoDataUrl, operatorCode);
       const filename = generatePdfFilename(report);
-      await generateAndDownloadPdf(html, filename);
-      // Download JSON after a delay so the PDF download has time to register
-      setTimeout(() => downloadReportJson(report, operatorCode), 1500);
+      const pdfData = buildPdfData(report, operatorCode, logoDataUrl || undefined);
+      await generateAndDownloadPdf('', filename, pdfData);
     } catch {
-      // Fallback: use window.print()
       window.print();
     } finally {
       setPdfLoading(false);

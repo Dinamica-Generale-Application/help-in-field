@@ -1,27 +1,267 @@
 /**
- * html2pdf wrapper — dynamic import of html2pdf.js for lazy loading.
- * Includes iOS Safari fallback: if download fails, opens blob URL in new tab.
+ * PDF generation using jsPDF directly (text-based, parsable).
+ * Produces real text (searchable/selectable) + embedded images for attachments.
+ * This replaces the html2canvas approach for lighter, parsable PDFs.
  */
 
 /**
- * Detects if the current device is running iOS (any browser).
- * On iOS, all browsers use the WebKit engine and have the same download limitations.
+ * Generates a PDF from structured report data and triggers download.
+ * Uses jsPDF for real text output + image embedding.
  */
-function isIos(): boolean {
-  const ua = navigator.userAgent;
-  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+export async function generateAndDownloadPdf(
+  _html: string,
+  filename: string,
+  pdfData?: PdfReportData,
+): Promise<void> {
+  if (!pdfData) {
+    // Fallback: if no structured data provided, use legacy approach
+    await legacyHtml2PdfExport(_html, filename);
+    return;
+  }
+
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginLeft = 15;
+  const marginRight = 15;
+  const contentWidth = pageWidth - marginLeft - marginRight;
+  let y = 15;
+
+  // --- Helper functions ---
+  function checkPageBreak(needed: number) {
+    if (y + needed > pageHeight - 15) {
+      doc.addPage();
+      y = 15;
+    }
+  }
+
+  function addSectionTitle(title: string) {
+    checkPageBreak(12);
+    doc.setFillColor(240, 240, 240);
+    doc.rect(marginLeft, y, contentWidth, 7, 'F');
+    doc.setDrawColor(51, 51, 51);
+    doc.setLineWidth(0.5);
+    doc.line(marginLeft, y, marginLeft, y + 7);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(26, 26, 26);
+    doc.text(title, marginLeft + 5, y + 5);
+    y += 10;
+  }
+
+  function addField(label: string, value: string | undefined | null) {
+    if (!value) return;
+    checkPageBreak(7);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(85, 85, 85);
+    doc.text(`${label}:`, marginLeft, y);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(51, 51, 51);
+    // Wrap long values
+    const labelWidth = 45;
+    const valueLines = doc.splitTextToSize(value, contentWidth - labelWidth);
+    doc.text(valueLines, marginLeft + labelWidth, y);
+    y += Math.max(valueLines.length * 4.5, 5);
+  }
+
+  function addFieldRow(fields: Array<{ label: string; value: string | undefined | null }>) {
+    const validFields = fields.filter(f => f.value);
+    if (validFields.length === 0) return;
+    checkPageBreak(7);
+    const colWidth = contentWidth / validFields.length;
+    for (let i = 0; i < validFields.length; i++) {
+      const f = validFields[i]!;
+      const x = marginLeft + i * colWidth;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(85, 85, 85);
+      doc.text(`${f.label}:`, x, y);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(51, 51, 51);
+      doc.text(f.value || '', x + 30, y);
+    }
+    y += 6;
+  }
+
+  // --- Logo ---
+  if (pdfData.logoDataUrl) {
+    try {
+      const logoWidth = 50;
+      const logoHeight = 15;
+      const logoX = (pageWidth - logoWidth) / 2;
+      doc.addImage(pdfData.logoDataUrl, 'PNG', logoX, y, logoWidth, logoHeight);
+      y += logoHeight + 5;
+    } catch {
+      // Logo failed, continue without it
+    }
+  }
+
+  // --- Title ---
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(26, 26, 26);
+  const title = 'Rapporto di Assistenza Tecnica';
+  doc.text(title, pageWidth / 2, y, { align: 'center' });
+  y += 4;
+  doc.setDrawColor(51, 51, 51);
+  doc.setLineWidth(0.5);
+  doc.line(marginLeft, y, pageWidth - marginRight, y);
+  y += 8;
+
+  // --- Dati Cliente ---
+  addSectionTitle('Dati Cliente');
+  addField('Ragione Sociale', pdfData.companyName);
+  addField('Indirizzo', pdfData.address);
+  addField('Telefono', pdfData.phone);
+  y += 3;
+
+  // --- Dettagli Intervento ---
+  addSectionTitle('Dettagli Intervento');
+  addFieldRow([
+    { label: 'Data', value: pdfData.interventionDate },
+    { label: 'Operatore 1', value: pdfData.operator1 },
+  ]);
+  if (pdfData.operator2) {
+    addField('Operatore 2', pdfData.operator2);
+  }
+  addField('Luogo', pdfData.interventionLocation);
+  addField('Richiesto da', pdfData.requestedBy);
+  addField('Per conto di', pdfData.onBehalfOf);
+  addField('Motivo', pdfData.interventionReason);
+  addField('Rischio Caldo', pdfData.heatRisk);
+  addField('Descrizione', pdfData.description);
+  addField('Note', pdfData.notes);
+  y += 3;
+
+  // --- Dispositivi ---
+  if (pdfData.devices && pdfData.devices.length > 0) {
+    addSectionTitle('Dispositivi');
+    for (let i = 0; i < pdfData.devices.length; i++) {
+      const device = pdfData.devices[i]!;
+      checkPageBreak(20);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(51, 51, 51);
+      doc.text(`Dispositivo ${i + 1}`, marginLeft, y);
+      y += 5;
+      addField('Modello', device.model);
+      addField('N. Serie', device.serialNumber);
+      addField('Anno', device.productionYear);
+      addField('Garanzia', device.warranty);
+      y += 2;
+    }
+    y += 3;
+  }
+
+  // --- Costi ---
+  addSectionTitle('Costi');
+  checkPageBreak(30);
+
+  // Table header
+  doc.setFillColor(245, 245, 245);
+  doc.rect(marginLeft, y, contentWidth, 6, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(85, 85, 85);
+  doc.text('Voce', marginLeft + 2, y + 4);
+  doc.text('Dettaglio', marginLeft + 50, y + 4);
+  doc.text('Importo', marginLeft + contentWidth - 25, y + 4);
+  y += 8;
+
+  // Cost rows
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(51, 51, 51);
+
+  doc.text('Ore lavorate', marginLeft + 2, y);
+  doc.text(pdfData.costDetails.hoursDetail, marginLeft + 50, y);
+  doc.text(pdfData.costDetails.hourlyTotal, marginLeft + contentWidth - 25, y);
+  y += 6;
+
+  doc.text('Chilometri', marginLeft + 2, y);
+  doc.text(pdfData.costDetails.kmDetail, marginLeft + 50, y);
+  doc.text(pdfData.costDetails.kmTotal, marginLeft + contentWidth - 25, y);
+  y += 6;
+
+  if (pdfData.costDetails.otherExpenses) {
+    doc.text('Altro', marginLeft + 2, y);
+    doc.text(pdfData.costDetails.otherExpenses, marginLeft + contentWidth - 25, y);
+    y += 6;
+  }
+
+  // Total row
+  doc.setDrawColor(51, 51, 51);
+  doc.setLineWidth(0.4);
+  doc.line(marginLeft, y, pageWidth - marginRight, y);
+  y += 5;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('Totale Intervento', marginLeft + 2, y);
+  doc.text(pdfData.costDetails.grandTotal, marginLeft + contentWidth - 25, y);
+  y += 8;
+
+  // --- Allegati (immagini) ---
+  if (pdfData.attachments && pdfData.attachments.length > 0) {
+    addSectionTitle('Allegati');
+    for (const att of pdfData.attachments) {
+      if (!att.dataUrl) continue;
+      checkPageBreak(80);
+      try {
+        // Determine image format from dataUrl
+        const format = att.dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+        const maxImgWidth = contentWidth - 10;
+        const maxImgHeight = 90;
+        // Add image scaled to fit
+        doc.addImage(att.dataUrl, format, marginLeft + 5, y, maxImgWidth, maxImgHeight, undefined, 'MEDIUM');
+        y += maxImgHeight + 3;
+        if (att.description) {
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(8);
+          doc.setTextColor(100, 100, 100);
+          doc.text(att.description, marginLeft + 5, y);
+          y += 5;
+        }
+        y += 5;
+      } catch {
+        // Skip image if it fails
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(8);
+        doc.text('[Immagine non disponibile]', marginLeft + 5, y);
+        y += 8;
+      }
+    }
+  }
+
+  // --- Firma e Timbro ---
+  checkPageBreak(45);
+  addSectionTitle('Firma e Timbro');
+  y += 25;
+  doc.setDrawColor(51, 51, 51);
+  doc.setLineWidth(0.3);
+  // Left signature
+  doc.line(marginLeft + 5, y, marginLeft + 70, y);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(85, 85, 85);
+  doc.text('Firma Tecnico', marginLeft + 20, y + 5);
+  // Right signature
+  const rightX = pageWidth - marginRight - 70;
+  doc.line(rightX, y, rightX + 65, y);
+  doc.text('Timbro e Firma Cliente', rightX + 8, y + 5);
+
+  // --- Save ---
+  doc.save(filename);
 }
 
 /**
- * Generates a PDF from an HTML string and triggers download.
- * Falls back to opening a blob URL in a new tab on iOS Safari.
+ * Legacy export using html2pdf.js (canvas-based, for backward compatibility).
  */
-export async function generateAndDownloadPdf(html: string, filename: string): Promise<void> {
-  // Dynamic import of html2pdf.js (lazy loaded for bundle size)
+async function legacyHtml2PdfExport(html: string, filename: string): Promise<void> {
   const html2pdfModule = await import('html2pdf.js');
   const html2pdf = html2pdfModule.default;
 
-  // Create a temporary container for the HTML
   const container = document.createElement('div');
   container.innerHTML = html;
   document.body.appendChild(container);
@@ -34,27 +274,45 @@ export async function generateAndDownloadPdf(html: string, filename: string): Pr
       html2canvas: { scale: 2, useCORS: true, logging: false },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
     };
-
-    if (isIos()) {
-      // iOS: generate as blob and trigger via <a> link (avoids popup blocker)
-      const blob: Blob = await html2pdf().set(options).from(container).outputPdf('blob');
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.target = '_blank';
-      link.rel = 'noopener';
-      // iOS Safari supports download attribute partially — set it as hint
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      // Revoke after a delay to allow the browser to process
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-    } else {
-      // Standard browsers: download directly
-      await html2pdf().set(options).from(container).save();
-    }
+    await html2pdf().set(options).from(container).save();
   } finally {
     document.body.removeChild(container);
   }
+}
+
+// --- Types ---
+
+export interface PdfReportData {
+  logoDataUrl?: string;
+  companyName: string;
+  address?: string;
+  phone?: string;
+  interventionDate: string;
+  operator1: string;
+  operator2?: string;
+  interventionLocation?: string;
+  requestedBy?: string;
+  onBehalfOf?: string;
+  interventionReason?: string;
+  heatRisk?: string;
+  description: string;
+  notes?: string;
+  devices?: Array<{
+    model?: string;
+    serialNumber?: string;
+    productionYear?: string;
+    warranty?: string;
+  }>;
+  costDetails: {
+    hoursDetail: string;
+    kmDetail: string;
+    hourlyTotal: string;
+    kmTotal: string;
+    otherExpenses?: string;
+    grandTotal: string;
+  };
+  attachments?: Array<{
+    dataUrl?: string;
+    description?: string;
+  }>;
 }
