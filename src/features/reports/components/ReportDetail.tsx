@@ -56,8 +56,8 @@ export function ReportDetail({ report }: ReportDetailProps) {
       const html = await generateHtmlTemplate(report, logoDataUrl, operatorCode);
       const filename = generatePdfFilename(report);
       await generateAndDownloadPdf(html, filename);
-      // Also download JSON data for dashboard/analytics
-      downloadReportJson(report, operatorCode);
+      // Download JSON after a delay so the PDF download has time to register
+      setTimeout(() => downloadReportJson(report, operatorCode), 1500);
     } catch {
       // Fallback: use window.print()
       window.print();
