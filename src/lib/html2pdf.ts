@@ -4,13 +4,12 @@
  */
 
 /**
- * Detects if the current browser is iOS Safari.
+ * Detects if the current device is running iOS (any browser).
+ * On iOS, all browsers use the WebKit engine and have the same download limitations.
  */
-function isIosSafari(): boolean {
+function isIos(): boolean {
   const ua = navigator.userAgent;
-  const isIos = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|Chrome/.test(ua);
-  return isIos && isSafari;
+  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
 /**
@@ -36,11 +35,21 @@ export async function generateAndDownloadPdf(html: string, filename: string): Pr
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
     };
 
-    if (isIosSafari()) {
-      // iOS Safari: generate as blob and open in new tab
+    if (isIos()) {
+      // iOS: generate as blob and trigger via <a> link (avoids popup blocker)
       const blob: Blob = await html2pdf().set(options).from(container).outputPdf('blob');
       const blobUrl = URL.createObjectURL(blob);
-      window.open(blobUrl, '_blank');
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      // iOS Safari supports download attribute partially — set it as hint
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      // Revoke after a delay to allow the browser to process
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
     } else {
       // Standard browsers: download directly
       await html2pdf().set(options).from(container).save();
