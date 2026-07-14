@@ -14,6 +14,7 @@ import { useSettingsStore } from '@/features/settings/stores/settingsStore';
 import { generateHtmlTemplate, generatePdfFilename } from '../utils/pdf-export';
 import { getLogoDataUrl } from '../utils/logo';
 import { generateAndDownloadPdf } from '@/lib/html2pdf';
+import { downloadReportJson } from '../utils/json-export';
 import { DeleteReportDialog } from './DeleteReportDialog';
 import type { Report } from '../types';
 
@@ -50,10 +51,13 @@ export function ReportDetail({ report }: ReportDetailProps) {
   async function handleExportPdf() {
     setPdfLoading(true);
     try {
+      const operatorCode = useSettingsStore.getState().operatorCode;
       const logoDataUrl = await getLogoDataUrl();
-      const html = await generateHtmlTemplate(report, logoDataUrl, useSettingsStore.getState().operatorCode);
+      const html = await generateHtmlTemplate(report, logoDataUrl, operatorCode);
       const filename = generatePdfFilename(report);
       await generateAndDownloadPdf(html, filename);
+      // Also download JSON data for dashboard/analytics
+      downloadReportJson(report, operatorCode);
     } catch {
       // Fallback: use window.print()
       window.print();
