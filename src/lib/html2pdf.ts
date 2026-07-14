@@ -220,20 +220,18 @@ export async function generateAndDownloadPdf(
     for (const att of pdfData.attachments) {
       if (!att.dataUrl) continue;
       try {
-        // Load image to get natural dimensions
+        // Load image to get natural pixel dimensions
         const imgDims = await getImageDimensions(att.dataUrl);
         const format = att.dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG';
-        const maxImgWidth = contentWidth - 10;
-        const maxImgHeight = 120;
+        const maxW = contentWidth - 10;
+        const maxH = 120;
 
-        // Calculate scaled dimensions preserving aspect ratio
-        const ratio = imgDims.width / imgDims.height;
-        let imgW = maxImgWidth;
-        let imgH = imgW / ratio;
-        if (imgH > maxImgHeight) {
-          imgH = maxImgHeight;
-          imgW = imgH * ratio;
-        }
+        // Scale to fit within maxW × maxH preserving aspect ratio
+        const scaleW = maxW / imgDims.width;
+        const scaleH = maxH / imgDims.height;
+        const scale = Math.min(scaleW, scaleH);
+        const imgW = imgDims.width * scale;
+        const imgH = imgDims.height * scale;
 
         checkPageBreak(imgH + 15);
         doc.addImage(att.dataUrl, format, marginLeft + 5, y, imgW, imgH, undefined, 'MEDIUM');
