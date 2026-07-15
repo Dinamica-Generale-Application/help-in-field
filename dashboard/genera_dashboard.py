@@ -41,10 +41,19 @@ def extract_report_data(pdf_path: Path) -> dict | None:
     data: dict = {"_source": pdf_path.name}
 
     # Parse fields using label: value pattern
+    # In jsPDF PDFs, format can be "Label:\nValue\n" (value on next line)
+    # or "Label: Value\n" (value on same line)
     def find_field(label: str) -> str | None:
-        pattern = rf"{re.escape(label)}:\s*(.+?)(?:\n|$)"
+        # Pattern: "Label:\n" followed by value on next line
+        pattern = rf"{re.escape(label)}:\n(.+?)(?:\n|$)"
         match = re.search(pattern, text)
-        return match.group(1).strip() if match else None
+        if not match:
+            return None
+        value = match.group(1).strip()
+        # If value looks like another section/label (contains ":"), it means field was empty
+        if not value or value.endswith(":") or value in ("Dati Cliente", "Dettagli Intervento", "Dispositivi", "Costi", "Allegati", "Firma e Timbro"):
+            return None
+        return value
 
     data["companyName"] = find_field("Ragione Sociale") or ""
     data["address"] = find_field("Indirizzo")
@@ -68,7 +77,7 @@ def extract_report_data(pdf_path: Path) -> dict | None:
     data["operator2"] = find_field("Operatore 2")
     data["interventionLocation"] = find_field("Luogo") or find_field("Luogo Intervento")
     data["requestedBy"] = find_field("Richiesto da")
-    data["onBehalfOf"] = find_field("Per conto di")
+    data["onBehalfOf"] = find_field("Per conto di") or "Fyeld"
     data["interventionReason"] = find_field("Motivo") or find_field("Motivo Intervento")
     data["heatRisk"] = find_field("Rischio Caldo")
     data["description"] = find_field("Descrizione")
@@ -460,7 +469,7 @@ function renderKPIs(reports) {{
     <div class="kpi-card"><div class="kpi-value">${{totalInterventions}}</div><div class="kpi-label">Interventi</div></div>
     <div class="kpi-card"><div class="kpi-value">${{totalHours.toFixed(1)}}</div><div class="kpi-label">Ore totali</div></div>
     <div class="kpi-card"><div class="kpi-value">${{totalKm.toLocaleString('it-IT')}}</div><div class="kpi-label">Km totali</div></div>
-    <div class="kpi-card"><div class="kpi-value">${{totalRevenue.toLocaleString('it-IT', {{minimumFractionDigits:2, maximumFractionDigits:2}})}}&euro;</div><div class="kpi-label">Fatturato totale</div></div>
+    <div class="kpi-card"><div class="kpi-value">${{totalRevenue.toLocaleString('it-IT', {{minimumFractionDigits:2, maximumFractionDigits:2}})}}&euro;</div><div class="kpi-label">Spese totali</div></div>
     <div class="kpi-card"><div class="kpi-value">${{avgHoursPerIntervention}}</div><div class="kpi-label">Ore medie / intervento</div></div>
     <div class="kpi-card"><div class="kpi-value">${{uniqueClients}}</div><div class="kpi-label">Clienti unici</div></div>
   `;

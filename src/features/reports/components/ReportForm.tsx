@@ -515,11 +515,18 @@ export function ReportForm({ reportId }: ReportFormProps) {
             <input
               id="requestedBy"
               type="text"
+              list="requestedByOptions"
               value={requestedBy}
               onChange={(e) => { setRequestedBy(e.target.value); markDirty(); }}
               className="w-full rounded-md border border-input px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
               placeholder="Ruolo/reparto"
             />
+            <datalist id="requestedByOptions">
+              <option value="Brescia Francesco" />
+              <option value="Luca Luppi" />
+              <option value="Massimo Sabatini" />
+              <option value="Enrico Salvaterra" />
+            </datalist>
           </div>
         </div>
 
@@ -531,11 +538,16 @@ export function ReportForm({ reportId }: ReportFormProps) {
             <input
               id="onBehalfOf"
               type="text"
+              list="onBehalfOfOptions"
               value={onBehalfOf}
               onChange={(e) => { setOnBehalfOf(e.target.value); markDirty(); }}
               className="w-full rounded-md border border-input px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
               placeholder="Azienda committente"
             />
+            <datalist id="onBehalfOfOptions">
+              <option value="Fyeld" />
+              <option value="Dinamica Generale" />
+            </datalist>
           </div>
 
           <div className="space-y-1">
