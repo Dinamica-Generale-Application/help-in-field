@@ -198,6 +198,13 @@ export async function generateAndDownloadPdf(
   doc.text(pdfData.costDetails.kmTotal, marginLeft + contentWidth - 25, y);
   y += 6;
 
+  if (pdfData.costDetails.travelCost) {
+    doc.text('Ore viaggio', marginLeft + 2, y);
+    doc.text(pdfData.costDetails.travelDetail || '', marginLeft + 50, y);
+    doc.text(pdfData.costDetails.travelCost, marginLeft + contentWidth - 25, y);
+    y += 6;
+  }
+
   if (pdfData.costDetails.otherExpenses) {
     doc.text('Altro', marginLeft + 2, y);
     doc.text(pdfData.costDetails.otherExpenses, marginLeft + contentWidth - 25, y);
@@ -328,8 +335,10 @@ export interface PdfReportData {
   costDetails: {
     hoursDetail: string;
     kmDetail: string;
+    travelDetail?: string;
     hourlyTotal: string;
     kmTotal: string;
+    travelCost?: string;
     otherExpenses?: string;
     grandTotal: string;
   };

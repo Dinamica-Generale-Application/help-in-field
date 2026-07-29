@@ -14,6 +14,9 @@ export function CostSummary({ breakdown }: CostSummaryProps) {
   const rows = [
     { label: 'Costo ore', value: breakdown.hourlyTotal },
     { label: 'Costo km', value: breakdown.kilometerTotal },
+    ...(breakdown.travelCost > 0
+      ? [{ label: `Ore viaggio (${breakdown.travelHours.toFixed(1)}h × 60€)`, value: breakdown.travelCost }]
+      : []),
     ...(breakdown.otherExpenses > 0
       ? [{ label: 'Altro', value: breakdown.otherExpenses }]
       : []),

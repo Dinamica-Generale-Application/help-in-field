@@ -85,9 +85,10 @@ def extract_report_data(pdf_path: Path) -> dict | None:
     data["interventionLocation"] = find_field("Luogo") or find_field("Luogo Intervento")
     data["requestedBy"] = find_field("Richiesto da")
     data["onBehalfOf"] = normalize_on_behalf(find_field("Per conto di") or "Fyeld")
-    data["interventionReason"] = find_field("Motivo") or find_field("Motivo Intervento")
+    data["interventionReason"] = find_field("Motivo") or find_field("Motivo richiesta intervento") or find_field("Motivo Intervento")
+    data["problemFound"] = find_field("Problema riscontrato")
     data["heatRisk"] = find_field("Rischio Caldo")
-    data["description"] = find_field("Descrizione")
+    data["description"] = find_field("Descrizione") or find_field("Descrizione dettagliata")
     data["notes"] = find_field("Note")
 
     # Parse costs from table
@@ -184,6 +185,7 @@ def extract_report_from_image(image_path: Path) -> dict | None:
     data["requestedBy"] = find_after("Richiesto da")
     data["onBehalfOf"] = normalize_on_behalf(find_after("Per conto di") or "Fyeld")
     data["interventionReason"] = find_after("Motivo")
+    data["problemFound"] = find_after("Problema riscontrato")
     data["description"] = find_after("Descrizione")
     data["notes"] = find_after("Note")
 
@@ -490,6 +492,10 @@ def generate_dashboard_html(reports: list[dict]) -> str:
     <div id="chartReasons"></div>
   </div>
   <div class="chart-card">
+    <h3>Per problema riscontrato</h3>
+    <div id="chartProblems"></div>
+  </div>
+  <div class="chart-card">
     <h3>Dettaglio rapporti</h3>
     <div style="max-height: 400px; overflow-y: auto;">
       <table id="reportTable">
@@ -578,6 +584,7 @@ function render() {{
   renderMonthlyChart(reports);
   renderClientsChart(reports);
   renderReasonsChart(reports);
+  renderProblemsChart(reports);
   renderTable(reports);
 }}
 
@@ -589,11 +596,18 @@ function renderKPIs(reports) {{
   const avgHoursPerIntervention = totalInterventions > 0 ? (totalHours / totalInterventions).toFixed(1) : '0';
   const uniqueClients = new Set(reports.map(r => r.companyName)).size;
 
+  // Stima ore di viaggio: km / 55 km/h
+  const travelHours = totalKm / 55;
+  // Costo ore viaggio: stessa tariffa (60 €/h)
+  const travelCost = travelHours * 60;
+
   document.getElementById('kpiGrid').innerHTML = `
     <div class="kpi-card"><div class="kpi-value">${{totalInterventions}}</div><div class="kpi-label">Interventi</div></div>
-    <div class="kpi-card"><div class="kpi-value">${{totalHours.toFixed(1)}}</div><div class="kpi-label">Ore totali</div></div>
+    <div class="kpi-card"><div class="kpi-value">${{totalHours.toFixed(1)}}</div><div class="kpi-label">Ore lavorate</div></div>
+    <div class="kpi-card"><div class="kpi-value">${{travelHours.toFixed(1)}}</div><div class="kpi-label">Ore viaggio (stima)</div></div>
     <div class="kpi-card"><div class="kpi-value">${{totalKm.toLocaleString('it-IT')}}</div><div class="kpi-label">Km totali</div></div>
     <div class="kpi-card"><div class="kpi-value">${{totalRevenue.toLocaleString('it-IT', {{minimumFractionDigits:2, maximumFractionDigits:2}})}}&euro;</div><div class="kpi-label">Spese totali</div></div>
+    <div class="kpi-card"><div class="kpi-value">${{travelCost.toLocaleString('it-IT', {{minimumFractionDigits:2, maximumFractionDigits:2}})}}&euro;</div><div class="kpi-label">Costo viaggio (stima)</div></div>
     <div class="kpi-card"><div class="kpi-value">${{avgHoursPerIntervention}}</div><div class="kpi-label">Ore medie / intervento</div></div>
     <div class="kpi-card"><div class="kpi-value">${{uniqueClients}}</div><div class="kpi-label">Clienti unici</div></div>
   `;
@@ -646,6 +660,16 @@ function renderReasonsChart(reports) {{
   }});
   const data = Object.entries(counts).map(([k, v]) => ({{ label: k, value: v }}));
   renderBarChart('chartReasons', data, 5);
+}}
+
+function renderProblemsChart(reports) {{
+  const counts = {{}};
+  reports.forEach(r => {{
+    const problem = r.problemFound || 'Non specificato';
+    counts[problem] = (counts[problem] || 0) + 1;
+  }});
+  const data = Object.entries(counts).map(([k, v]) => ({{ label: k, value: v }}));
+  renderBarChart('chartProblems', data, 10);
 }}
 
 function renderTable(reports) {{

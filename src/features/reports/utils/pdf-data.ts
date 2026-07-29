@@ -103,8 +103,10 @@ export function buildPdfData(
     costDetails: {
       hoursDetail: `${hours} ore × ${HOURLY_RATE},00 €/h`,
       kmDetail: `${km} km × ${KM_RATE.toFixed(2).replace('.', ',')} €/km`,
+      travelDetail: km > 0 ? `${(km / 55).toFixed(1)} ore × ${HOURLY_RATE},00 €/h` : undefined,
       hourlyTotal: formatCurrencyPdf(report.hourlyTotal),
       kmTotal: formatCurrencyPdf(report.kilometerTotal),
+      travelCost: km > 0 ? formatCurrencyPdf(Math.round((km / 55) * HOURLY_RATE * 100) / 100) : undefined,
       otherExpenses: report.otherExpenses && report.otherExpenses > 0
         ? formatCurrencyPdf(report.otherExpenses)
         : undefined,

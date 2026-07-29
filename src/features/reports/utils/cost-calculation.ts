@@ -21,9 +21,14 @@ export interface CostInput {
 export interface CostBreakdown {
   hourlyTotal: number; // hours × HOURLY_RATE
   kilometerTotal: number; // km × KM_RATE
+  travelHours: number; // km / 55 (stima ore viaggio)
+  travelCost: number; // travelHours × HOURLY_RATE
   otherExpenses: number; // spese altro
-  grandTotal: number; // hourlyTotal + kilometerTotal + otherExpenses
+  grandTotal: number; // hourlyTotal + kilometerTotal + travelCost + otherExpenses
 }
+
+/** Velocità media stimata per calcolo ore viaggio (km/h) */
+const AVERAGE_SPEED = 55;
 
 // --- Utility ---
 
@@ -42,12 +47,16 @@ function roundTo2(value: number): number {
 export function calculate(input: CostInput): CostBreakdown {
   const hourlyTotal = roundTo2(input.hours * HOURLY_RATE);
   const kilometerTotal = roundTo2(input.kilometers * KM_RATE);
+  const travelHours = roundTo2(input.kilometers / AVERAGE_SPEED);
+  const travelCost = roundTo2(travelHours * HOURLY_RATE);
   const otherExpenses = roundTo2(input.otherExpenses);
-  const grandTotal = roundTo2(hourlyTotal + kilometerTotal + otherExpenses);
+  const grandTotal = roundTo2(hourlyTotal + kilometerTotal + travelCost + otherExpenses);
 
   return {
     hourlyTotal,
     kilometerTotal,
+    travelHours,
+    travelCost,
     otherExpenses,
     grandTotal,
   };
