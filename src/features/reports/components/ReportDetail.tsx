@@ -32,6 +32,20 @@ function formatInterventionReason(reason: string | undefined): string {
   }
 }
 
+function formatProblemFound(problem: string | undefined): string {
+  switch (problem) {
+    case 'installazione': return 'Installazione';
+    case 'regolazione_selezionatori': return 'Regolazione selezionatori';
+    case 'regolazione_nastri_pneumatica': return 'Regolazione nastri e pneumatica';
+    case 'guasto_elettrico': return 'Guasto elettrico';
+    case 'guasto_meccanico': return 'Guasto meccanico';
+    case 'verifica_pesatura': return 'Verifica sistema di pesatura';
+    case 'verifica_cloud': return 'Verifica cloud';
+    case 'altro': return 'Altro';
+    default: return problem || '';
+  }
+}
+
 function formatWarranty(warranty: string | undefined): string {
   switch (warranty) {
     case 'in_warranty': return 'In Garanzia';
@@ -145,7 +159,7 @@ export function ReportDetail({ report }: ReportDetailProps) {
           <Field label="Motivo richiesta intervento" value={formatInterventionReason(report.interventionReason)} />
         )}
         {report.problemFound && (
-          <Field label="Problema riscontrato" value={report.problemFound} />
+          <Field label="Problema riscontrato" value={formatProblemFound(report.problemFound)} />
         )}
         <Field label="Descrizione dettagliata" value={report.description} />
         {report.notes && <Field label="Note" value={report.notes} />}

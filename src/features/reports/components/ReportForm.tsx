@@ -575,26 +575,22 @@ export function ReportForm({ reportId }: ReportFormProps) {
           <label htmlFor="problemFound" className="text-sm font-medium">
             Problema riscontrato
           </label>
-          <div className="flex items-start gap-2">
-            <textarea
-              id="problemFound"
-              value={problemFound}
-              onChange={(e) => { setProblemFound(e.target.value); markDirty(); }}
-              className="w-full rounded-md border border-input px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring min-h-[80px] resize-y flex-1"
-              placeholder="Problema riscontrato sul campo…"
-              rows={3}
-            />
-            <SpeechButton
-              onResult={(text) => {
-                setProblemFound((prev) => {
-                  const separator = prev && !prev.endsWith(' ') && !prev.endsWith('\n') ? ' ' : '';
-                  return prev + separator + text;
-                });
-                markDirty();
-              }}
-              onInterimChange={setSpeechInterimText}
-            />
-          </div>
+          <select
+            id="problemFound"
+            value={problemFound}
+            onChange={(e) => { setProblemFound(e.target.value); markDirty(); }}
+            className="w-full rounded-md border border-input px-3 py-2 text-sm bg-background focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+          >
+            <option value="">— Seleziona —</option>
+            <option value="installazione">Installazione</option>
+            <option value="regolazione_selezionatori">Regolazione selezionatori</option>
+            <option value="regolazione_nastri_pneumatica">Regolazione nastri e pneumatica</option>
+            <option value="guasto_elettrico">Guasto elettrico</option>
+            <option value="guasto_meccanico">Guasto meccanico</option>
+            <option value="verifica_pesatura">Verifica sistema di pesatura</option>
+            <option value="verifica_cloud">Verifica cloud</option>
+            <option value="altro">Altro</option>
+          </select>
         </div>
 
         <div className="space-y-1">

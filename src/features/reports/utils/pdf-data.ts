@@ -56,6 +56,20 @@ function formatWarranty(warranty: string | undefined): string {
   }
 }
 
+function formatProblemFound(problem: string | undefined): string {
+  switch (problem) {
+    case 'installazione': return 'Installazione';
+    case 'regolazione_selezionatori': return 'Regolazione selezionatori';
+    case 'regolazione_nastri_pneumatica': return 'Regolazione nastri e pneumatica';
+    case 'guasto_elettrico': return 'Guasto elettrico';
+    case 'guasto_meccanico': return 'Guasto meccanico';
+    case 'verifica_pesatura': return 'Verifica sistema di pesatura';
+    case 'verifica_cloud': return 'Verifica cloud';
+    case 'altro': return 'Altro';
+    default: return '';
+  }
+}
+
 export function buildPdfData(
   report: Report,
   operatorCode: string,
@@ -77,7 +91,7 @@ export function buildPdfData(
     onBehalfOf: report.onBehalfOf,
     interventionReason: formatInterventionReason(report.interventionReason),
     heatRisk: formatHeatRisk(report.heatRisk),
-    problemFound: report.problemFound,
+    problemFound: formatProblemFound(report.problemFound),
     description: report.description,
     notes: report.notes,
     devices: report.devices.map((d) => ({
