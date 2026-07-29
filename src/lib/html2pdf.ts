@@ -142,9 +142,10 @@ export async function generateAndDownloadPdf(
   addField('Luogo', pdfData.interventionLocation);
   addField('Richiesto da', pdfData.requestedBy);
   addField('Per conto di', pdfData.onBehalfOf);
-  addField('Motivo', pdfData.interventionReason);
+  addField('Motivo richiesta intervento', pdfData.interventionReason);
   addField('Rischio Caldo', pdfData.heatRisk);
-  addField('Descrizione', pdfData.description);
+  addField('Problema riscontrato', pdfData.problemFound);
+  addField('Descrizione dettagliata', pdfData.description);
   addField('Note', pdfData.notes);
   y += 3;
 
@@ -315,6 +316,7 @@ export interface PdfReportData {
   onBehalfOf?: string;
   interventionReason?: string;
   heatRisk?: string;
+  problemFound?: string;
   description: string;
   notes?: string;
   devices?: Array<{

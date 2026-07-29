@@ -142,9 +142,12 @@ export function ReportDetail({ report }: ReportDetailProps) {
           <Field label="Per conto di" value={report.onBehalfOf} />
         )}
         {report.interventionReason && (
-          <Field label="Motivo" value={formatInterventionReason(report.interventionReason)} />
+          <Field label="Motivo richiesta intervento" value={formatInterventionReason(report.interventionReason)} />
         )}
-        <Field label="Descrizione" value={report.description} />
+        {report.problemFound && (
+          <Field label="Problema riscontrato" value={report.problemFound} />
+        )}
+        <Field label="Descrizione dettagliata" value={report.description} />
         {report.notes && <Field label="Note" value={report.notes} />}
       </Section>
 

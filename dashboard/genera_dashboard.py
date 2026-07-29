@@ -24,6 +24,13 @@ except ImportError:
     sys.exit(1)
 
 
+def normalize_on_behalf(value: str) -> str:
+    """Normalizza varianti di 'Fyeld' in un unico valore."""
+    if re.match(r"(?i)fyeld", value.strip()):
+        return "Fyeld"
+    return value.strip()
+
+
 def extract_report_data(pdf_path: Path) -> dict | None:
     """Estrae i dati strutturati da un PDF testuale generato dalla webapp."""
     try:
@@ -77,7 +84,7 @@ def extract_report_data(pdf_path: Path) -> dict | None:
     data["operator2"] = find_field("Operatore 2")
     data["interventionLocation"] = find_field("Luogo") or find_field("Luogo Intervento")
     data["requestedBy"] = find_field("Richiesto da")
-    data["onBehalfOf"] = find_field("Per conto di") or "Fyeld"
+    data["onBehalfOf"] = normalize_on_behalf(find_field("Per conto di") or "Fyeld")
     data["interventionReason"] = find_field("Motivo") or find_field("Motivo Intervento")
     data["heatRisk"] = find_field("Rischio Caldo")
     data["description"] = find_field("Descrizione")
@@ -113,17 +120,134 @@ def extract_report_data(pdf_path: Path) -> dict | None:
     return None
 
 
-def load_reports(folder: Path) -> list[dict]:
-    """Carica dati da tutti i PDF rapporto nella cartella."""
-    reports = []
-    pdf_files = sorted(folder.glob("rapporto_*.pdf"))
+def extract_report_from_image(image_path: Path) -> dict | None:
+    """Estrae dati da un'immagine JPEG di un report usando OCR (EasyOCR)."""
+    try:
+        import easyocr
+    except ImportError:
+        print("  ⚠️  EasyOCR non installato (pip install easyocr). JPEG ignorati.")
+        return None
 
+    # Skip small images (likely signature pages, < 30KB)
+    if image_path.stat().st_size < 30000:
+        return None
+
+    try:
+        if not hasattr(extract_report_from_image, '_reader'):
+            print("  ⏳ Inizializzazione OCR (prima volta, potrebbe richiedere qualche secondo)...")
+            extract_report_from_image._reader = easyocr.Reader(['it', 'en'], gpu=False, verbose=False)
+        
+        reader = extract_report_from_image._reader
+        results = reader.readtext(str(image_path))
+        
+        # Build text from OCR results (only confident ones)
+        lines = [text for (_, text, conf) in results if conf > 0.4]
+        text = "\n".join(lines)
+    except Exception:
+        return None
+
+    if "Rapporto" not in text and "Ragione Sociale" not in text:
+        return None  # Not a report image
+
+    data: dict = {"_source": image_path.name}
+
+    # Parse using same logic as PDF but adapted for OCR output
+    # OCR gives us lines in reading order, labels and values may be on same or separate lines
+    def find_after(label: str) -> str | None:
+        for i, line in enumerate(lines):
+            if label.lower() in line.lower():
+                # Value might be in same line after ":" or on next line
+                if ":" in line:
+                    parts = line.split(":", 1)
+                    if len(parts) > 1 and parts[1].strip():
+                        return parts[1].strip()
+                # Try next line
+                if i + 1 < len(lines):
+                    next_line = lines[i + 1]
+                    # Skip if next line is another label
+                    if not any(lbl in next_line for lbl in ["Dettagli", "Dati Cliente", "Costi", "Voce", "Dispositivi", "Allegati", "Firma"]):
+                        return next_line.strip()
+        return None
+
+    data["companyName"] = find_after("Ragione Sociale") or ""
+    
+    # Date: look for DD/MM/YYYY pattern
+    date_match = re.search(r"(\d{2})/(\d{2})/(\d{4})", text)
+    if date_match:
+        data["interventionDate"] = f"{date_match.group(3)}-{date_match.group(2)}-{date_match.group(1)}"
+    else:
+        data["interventionDate"] = ""
+
+    data["operator1"] = find_after("Operatore 1") or ""
+    data["operator2"] = find_after("Operatore 2")
+    data["interventionLocation"] = find_after("Luogo")
+    data["requestedBy"] = find_after("Richiesto da")
+    data["onBehalfOf"] = normalize_on_behalf(find_after("Per conto di") or "Fyeld")
+    data["interventionReason"] = find_after("Motivo")
+    data["description"] = find_after("Descrizione")
+    data["notes"] = find_after("Note")
+
+    # Hours: look for "X ore"
+    hours_match = re.search(r"(\d+[.,]?\d*)\s*ore", text)
+    data["hoursWorked"] = float(hours_match.group(1).replace(",", ".")) if hours_match else 0
+
+    # Km: look for "X km"
+    km_match = re.search(r"(\d+[.,]?\d*)\s*km", text)
+    data["kilometers"] = float(km_match.group(1).replace(",", ".")) if km_match else 0
+
+    # Total: look for amount after "Totale Intervento" (may be on next line)
+    total_match = re.search(r"Totale.*?(\d+[.,]\d+)\s*€", text, re.DOTALL)
+    if not total_match:
+        # Fallback: find the line after "Totale Intervento"
+        for i, line in enumerate(lines):
+            if "Totale" in line and "Intervento" in line:
+                # Check same line for amount
+                amt = re.search(r"(\d+[.,]\d+)\s*€", line)
+                if amt:
+                    total_match = amt
+                # Check next line
+                elif i + 1 < len(lines):
+                    amt = re.search(r"(\d+[.,]\d+)\s*€", lines[i + 1])
+                    if amt:
+                        total_match = amt
+                break
+    if total_match:
+        total_str = total_match.group(1).replace(".", "").replace(",", ".")
+        try:
+            data["grandTotal"] = float(total_str)
+        except ValueError:
+            data["grandTotal"] = 0
+    else:
+        data["grandTotal"] = 0
+
+    if data["companyName"] or data["interventionDate"]:
+        return data
+    return None
+
+
+def load_reports(folder: Path) -> list[dict]:
+    """Carica dati da PDF e immagini JPEG nella cartella."""
+    reports = []
+    
+    # Load from PDFs
+    pdf_files = sorted(folder.glob("rapporto_*.pdf"))
     for pdf_path in pdf_files:
         data = extract_report_data(pdf_path)
         if data:
             reports.append(data)
         else:
             print(f"  ⚠️  Ignorato (vecchio formato o vuoto): {pdf_path.name}")
+
+    # Load from JPEG images (OCR)
+    jpeg_files = sorted(folder.glob("*.jpeg")) + sorted(folder.glob("*.jpg"))
+    if jpeg_files:
+        print(f"\n  📷 Trovate {len(jpeg_files)} immagini, analisi OCR...")
+        for img_path in jpeg_files:
+            data = extract_report_from_image(img_path)
+            if data:
+                reports.append(data)
+                print(f"  ✅ OCR: {img_path.name} → {data.get('companyName', '?')}")
+            # Skip silently small images (signature pages)
 
     return reports
 

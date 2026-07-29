@@ -65,6 +65,7 @@ export interface Report {
   onBehalfOf?: string;
   interventionReason?: InterventionReason;
   heatRisk?: HeatRiskLevel;
+  problemFound?: string;
   description: string;
 
   // Dispositivi

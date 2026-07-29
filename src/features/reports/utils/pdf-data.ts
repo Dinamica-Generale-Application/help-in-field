@@ -77,6 +77,7 @@ export function buildPdfData(
     onBehalfOf: report.onBehalfOf,
     interventionReason: formatInterventionReason(report.interventionReason),
     heatRisk: formatHeatRisk(report.heatRisk),
+    problemFound: report.problemFound,
     description: report.description,
     notes: report.notes,
     devices: report.devices.map((d) => ({

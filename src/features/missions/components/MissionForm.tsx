@@ -112,7 +112,7 @@ export function MissionForm() {
 
         <div className="space-y-1">
           <label htmlFor="missionReason" className="text-sm font-medium">
-            Motivo intervento
+            Motivo richiesta intervento
           </label>
           <select
             id="missionReason"
