@@ -262,6 +262,73 @@ export async function generateAndDownloadPdf(
     }
   }
 
+  // --- Validazione Cliente ---
+  if (pdfData.clientValidation) {
+    checkPageBreak(70);
+    addSectionTitle('Validazione Cliente');
+    
+    // Format validation date
+    const validatedDate = pdfData.clientValidation.validatedAt.split('T')[0] || '';
+    const [vYear, vMonth, vDay] = validatedDate.split('-');
+    const formattedValidatedAt = vYear && vMonth && vDay ? `${vDay}/${vMonth}/${vYear}` : validatedDate;
+    
+    addField('Firmato da', pdfData.clientValidation.signerRole);
+    addField('Data validazione', formattedValidatedAt);
+    if (pdfData.clientValidation.clientNotes) {
+      addField('Note cliente', pdfData.clientValidation.clientNotes);
+    }
+    
+    // Add signature image
+    y += 3;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(85, 85, 85);
+    doc.text('Firma cliente:', marginLeft, y);
+    y += 5;
+    
+    try {
+      const sigDims = await getImageDimensions(pdfData.clientValidation.signatureDataUrl);
+      const sigMaxW = 70;
+      const sigMaxH = 35;
+      const sigScaleW = sigMaxW / sigDims.width;
+      const sigScaleH = sigMaxH / sigDims.height;
+      const sigScale = Math.min(sigScaleW, sigScaleH);
+      const sigW = sigDims.width * sigScale;
+      const sigH = sigDims.height * sigScale;
+      
+      // Draw border around signature
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.3);
+      doc.rect(marginLeft, y, sigW + 4, sigH + 4, 'S');
+      
+      doc.addImage(
+        pdfData.clientValidation.signatureDataUrl,
+        'PNG',
+        marginLeft + 2,
+        y + 2,
+        sigW,
+        sigH,
+        undefined,
+        'MEDIUM'
+      );
+      y += sigH + 10;
+    } catch {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.text('[Firma non disponibile]', marginLeft, y);
+      y += 8;
+    }
+    
+    // Green checkmark indicator
+    doc.setFillColor(34, 197, 94);
+    doc.circle(marginLeft + 3, y, 2, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(34, 197, 94);
+    doc.text('Validato dal cliente', marginLeft + 8, y + 1);
+    y += 8;
+  }
+
   // --- Firma e Timbro ---
   checkPageBreak(45);
   addSectionTitle('Firma e Timbro');
@@ -346,4 +413,10 @@ export interface PdfReportData {
     dataUrl?: string;
     description?: string;
   }>;
+  clientValidation?: {
+    signatureDataUrl: string;
+    signerRole: string;
+    clientNotes?: string;
+    validatedAt: string;
+  };
 }

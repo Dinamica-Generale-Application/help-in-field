@@ -116,5 +116,11 @@ export function buildPdfData(
       dataUrl: att.dataUrl,
       description: att.description,
     })),
+    clientValidation: report.clientValidation ? {
+      signatureDataUrl: report.clientValidation.signatureDataUrl,
+      signerRole: report.clientValidation.signerRole,
+      clientNotes: report.clientValidation.clientNotes,
+      validatedAt: report.clientValidation.validatedAt,
+    } : undefined,
   };
 }

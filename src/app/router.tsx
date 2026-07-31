@@ -6,6 +6,7 @@ import { ReportListRoute } from '@/features/reports/routes/ReportListRoute';
 import { ReportNewRoute } from '@/features/reports/routes/ReportNewRoute';
 import { ReportEditRoute } from '@/features/reports/routes/ReportEditRoute';
 import { ReportDetailRoute } from '@/features/reports/routes/ReportDetailRoute';
+import { ClientValidationRoute } from '@/features/reports/routes/ClientValidationRoute';
 import { SettingsRoute } from '@/features/settings/routes/SettingsRoute';
 import { MissionsRoute } from '@/features/missions/routes/MissionsRoute';
 import { MissionImportRoute } from '@/features/missions/routes/MissionImportRoute';
@@ -31,6 +32,7 @@ const router = createBrowserRouter([
       { path: 'reports/new', element: <ReportNewRoute /> },
       { path: 'reports/:id', element: <ReportDetailRoute /> },
       { path: 'reports/:id/edit', element: <ReportEditRoute /> },
+      { path: 'reports/:id/validate', element: <ClientValidationRoute /> },
       {
         path: 'map',
         element: (

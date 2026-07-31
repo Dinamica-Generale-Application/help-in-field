@@ -115,6 +115,9 @@ def extract_report_data(pdf_path: Path) -> dict | None:
     else:
         data["grandTotal"] = 0
 
+    # Detect if travel cost is already included (new format reports)
+    data["hasTravelCost"] = "Ore viaggio" in text
+
     # Only return if we got at least a company name or date
     if data["companyName"] or data["interventionDate"]:
         return data
@@ -222,6 +225,9 @@ def extract_report_from_image(image_path: Path) -> dict | None:
     else:
         data["grandTotal"] = 0
 
+    # JPEG images are always old format (no travel cost included)
+    data["hasTravelCost"] = False
+
     if data["companyName"] or data["interventionDate"]:
         return data
     return None
@@ -239,17 +245,6 @@ def load_reports(folder: Path) -> list[dict]:
             reports.append(data)
         else:
             print(f"  ⚠️  Ignorato (vecchio formato o vuoto): {pdf_path.name}")
-
-    # Load from JPEG images (OCR)
-    jpeg_files = sorted(folder.glob("*.jpeg")) + sorted(folder.glob("*.jpg"))
-    if jpeg_files:
-        print(f"\n  📷 Trovate {len(jpeg_files)} immagini, analisi OCR...")
-        for img_path in jpeg_files:
-            data = extract_report_from_image(img_path)
-            if data:
-                reports.append(data)
-                print(f"  ✅ OCR: {img_path.name} → {data.get('companyName', '?')}")
-            # Skip silently small images (signature pages)
 
     return reports
 
@@ -355,6 +350,40 @@ def generate_dashboard_html(reports: list[dict]) -> str:
     margin-top: 4px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+  }}
+  /* Tab styling for expense split */
+  .expense-tabs {{
+    display: flex;
+    gap: 0;
+    margin-bottom: 8px;
+    justify-content: center;
+  }}
+  .expense-tab {{
+    padding: 6px 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #ddd;
+    background: #f5f5f5;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    transition: all 0.2s;
+  }}
+  .expense-tab:first-child {{
+    border-radius: 6px 0 0 6px;
+  }}
+  .expense-tab:last-child {{
+    border-radius: 0 6px 6px 0;
+    border-left: none;
+  }}
+  .expense-tab.active {{
+    background: #2563eb;
+    color: white;
+    border-color: #2563eb;
+  }}
+  .expense-tab:hover:not(.active) {{
+    background: #e8e8e8;
   }}
   .charts-grid {{
     display: grid;
@@ -588,29 +617,78 @@ function render() {{
   renderTable(reports);
 }}
 
+// Helper: check if report belongs to Angelo Bocchino
+function isAngeloBocchino(report) {{
+  const op1 = (report.operator1 || '').toLowerCase().trim();
+  const op2 = (report.operator2 || '').toLowerCase().trim();
+  return op1.includes('angelo bocchino') || op2.includes('angelo bocchino');
+}}
+
+// Calculate total expenses for a set of reports
+function calcExpenses(reports) {{
+  let total = 0;
+  reports.forEach(r => {{
+    let reportTotal = r.grandTotal || 0;
+    if (!r.hasTravelCost && r.kilometers > 0) {{
+      reportTotal += (r.kilometers / 55) * 60;
+    }}
+    total += reportTotal;
+  }});
+  return total;
+}}
+
+// Track current expense tab
+let expenseTab = 'angelo'; // 'angelo' or 'altri'
+
+function setExpenseTab(tab) {{
+  expenseTab = tab;
+  // Re-render just the expense card
+  const reports = getFilteredReports();
+  updateExpenseCard(reports);
+}}
+
+function updateExpenseCard(reports) {{
+  const angeloReports = reports.filter(isAngeloBocchino);
+  const altriReports = reports.filter(r => !isAngeloBocchino(r));
+  
+  const angeloExpenses = calcExpenses(angeloReports);
+  const altriExpenses = calcExpenses(altriReports);
+  
+  const currentExpenses = expenseTab === 'angelo' ? angeloExpenses : altriExpenses;
+  const currentCount = expenseTab === 'angelo' ? angeloReports.length : altriReports.length;
+  
+  document.getElementById('expenseCard').innerHTML = `
+    <div class="expense-tabs">
+      <button class="expense-tab ${{expenseTab === 'angelo' ? 'active' : ''}}" onclick="setExpenseTab('angelo')">A. Bocchino (${{angeloReports.length}})</button>
+      <button class="expense-tab ${{expenseTab === 'altri' ? 'active' : ''}}" onclick="setExpenseTab('altri')">Altri (${{altriReports.length}})</button>
+    </div>
+    <div class="kpi-value">${{currentExpenses.toLocaleString('it-IT', {{minimumFractionDigits:2, maximumFractionDigits:2}})}}&euro;</div>
+    <div class="kpi-label">Spese totali</div>
+  `;
+}}
+
 function renderKPIs(reports) {{
   const totalInterventions = reports.length;
   const totalHours = reports.reduce((s, r) => s + (r.hoursWorked || 0), 0);
   const totalKm = reports.reduce((s, r) => s + (r.kilometers || 0), 0);
-  const totalRevenue = reports.reduce((s, r) => s + (r.grandTotal || 0), 0);
   const avgHoursPerIntervention = totalInterventions > 0 ? (totalHours / totalInterventions).toFixed(1) : '0';
   const uniqueClients = new Set(reports.map(r => r.companyName)).size;
 
-  // Stima ore di viaggio: km / 55 km/h
+  // Stima ore di viaggio totali: km / 55 km/h
   const travelHours = totalKm / 55;
-  // Costo ore viaggio: stessa tariffa (60 €/h)
-  const travelCost = travelHours * 60;
 
   document.getElementById('kpiGrid').innerHTML = `
     <div class="kpi-card"><div class="kpi-value">${{totalInterventions}}</div><div class="kpi-label">Interventi</div></div>
     <div class="kpi-card"><div class="kpi-value">${{totalHours.toFixed(1)}}</div><div class="kpi-label">Ore lavorate</div></div>
     <div class="kpi-card"><div class="kpi-value">${{travelHours.toFixed(1)}}</div><div class="kpi-label">Ore viaggio (stima)</div></div>
     <div class="kpi-card"><div class="kpi-value">${{totalKm.toLocaleString('it-IT')}}</div><div class="kpi-label">Km totali</div></div>
-    <div class="kpi-card"><div class="kpi-value">${{totalRevenue.toLocaleString('it-IT', {{minimumFractionDigits:2, maximumFractionDigits:2}})}}&euro;</div><div class="kpi-label">Spese totali</div></div>
-    <div class="kpi-card"><div class="kpi-value">${{travelCost.toLocaleString('it-IT', {{minimumFractionDigits:2, maximumFractionDigits:2}})}}&euro;</div><div class="kpi-label">Costo viaggio (stima)</div></div>
+    <div class="kpi-card" id="expenseCard"></div>
     <div class="kpi-card"><div class="kpi-value">${{avgHoursPerIntervention}}</div><div class="kpi-label">Ore medie / intervento</div></div>
     <div class="kpi-card"><div class="kpi-value">${{uniqueClients}}</div><div class="kpi-label">Clienti unici</div></div>
   `;
+  
+  // Render the expense card with tabs
+  updateExpenseCard(reports);
 }}
 
 function renderBarChart(containerId, data, maxBars) {{

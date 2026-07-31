@@ -1,12 +1,12 @@
 /**
  * ReportDetail — read-only view of a report organized by sections.
  * Sections: client info, intervention details, devices, costs, attachments.
- * Actions: Edit, Export PDF, Delete.
+ * Actions: Edit, Export PDF, Delete, Request Client Validation.
  */
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, FileDown, Trash2 } from 'lucide-react';
+import { Pencil, FileDown, Trash2, UserCheck, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDate, formatCurrency } from '@/utils/format';
 import { useReportStore } from '../stores/reportStore';
@@ -61,6 +61,7 @@ export function ReportDetail({ report }: ReportDetailProps) {
   const [pdfLoading, setPdfLoading] = useState(false);
 
   const isDraft = report.status === 'draft';
+  const isValidated = report.status === 'validated' || !!report.clientValidation;
 
   async function handleExportPdf() {
     setPdfLoading(true);
@@ -99,10 +100,12 @@ export function ReportDetail({ report }: ReportDetailProps) {
             'inline-flex w-fit items-center rounded-full px-3 py-1 text-xs font-medium',
             isDraft
               ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+              : isValidated
+              ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
               : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
           )}
         >
-          {isDraft ? 'Bozza' : 'Completato'}
+          {isDraft ? 'Bozza' : isValidated ? 'Validato' : 'Completato'}
         </span>
       </div>
 
@@ -116,6 +119,16 @@ export function ReportDetail({ report }: ReportDetailProps) {
           <Pencil className="h-4 w-4" aria-hidden="true" />
           Modifica
         </button>
+        {!isValidated && (
+          <button
+            type="button"
+            onClick={() => navigate(`/reports/${report.id}/validate`)}
+            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary min-h-[44px]"
+          >
+            <UserCheck className="h-4 w-4" aria-hidden="true" />
+            Validazione Cliente
+          </button>
+        )}
         <button
           type="button"
           onClick={handleExportPdf}
@@ -225,6 +238,34 @@ export function ReportDetail({ report }: ReportDetailProps) {
                 )}
               </div>
             ))}
+          </div>
+        </Section>
+      )}
+
+      {/* Client Validation */}
+      {report.clientValidation && (
+        <Section title="Validazione Cliente">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
+              <CheckCircle2 className="h-5 w-5" />
+              <span className="font-medium">Validato dal cliente</span>
+            </div>
+            <Field label="Firmato da" value={report.clientValidation.signerRole} />
+            <Field 
+              label="Data validazione" 
+              value={formatDate(report.clientValidation.validatedAt.split('T')[0]!)} 
+            />
+            {report.clientValidation.clientNotes && (
+              <Field label="Note cliente" value={report.clientValidation.clientNotes} />
+            )}
+            <div className="space-y-1">
+              <span className="text-sm font-medium text-muted-foreground">Firma</span>
+              <img
+                src={report.clientValidation.signatureDataUrl}
+                alt="Firma cliente"
+                className="max-w-[300px] border border-border rounded-md bg-white"
+              />
+            </div>
           </div>
         </Section>
       )}

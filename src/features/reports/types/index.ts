@@ -3,7 +3,21 @@
  */
 
 /** Status of a report */
-export type ReportStatus = 'draft' | 'completed' | 'mission';
+export type ReportStatus = 'draft' | 'completed' | 'validated' | 'mission';
+
+/**
+ * Client validation data — captured when client signs off on the report.
+ */
+export interface ClientValidation {
+  /** Signature image as base64 data URL */
+  signatureDataUrl: string;
+  /** Client name or role (e.g., "Resp. Produzione") */
+  signerRole: string;
+  /** Optional notes from the client */
+  clientNotes?: string;
+  /** Timestamp when validated */
+  validatedAt: string;
+}
 
 /** Reason for the intervention */
 export type InterventionReason = 'installation' | 'supervision' | 'malfunction' | 'other';
@@ -92,6 +106,9 @@ export interface Report {
   // Metadata
   createdAt: string;
   updatedAt: string;
+
+  // Client validation (optional)
+  clientValidation?: ClientValidation;
 }
 
 /**
