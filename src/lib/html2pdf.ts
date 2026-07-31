@@ -264,6 +264,11 @@ export async function generateAndDownloadPdf(
 
   // --- Validazione Cliente ---
   if (pdfData.clientValidation) {
+    // Force new page if we're past 60% of the page (ensures signature section fits)
+    if (y > pageHeight * 0.6) {
+      doc.addPage();
+      y = 15;
+    }
     checkPageBreak(70);
     addSectionTitle('Validazione Cliente');
     
