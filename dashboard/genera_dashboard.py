@@ -24,11 +24,72 @@ except ImportError:
     sys.exit(1)
 
 
+def load_corrections(folder: Path) -> dict:
+    """Carica correzioni manuali da correzioni.json se esiste."""
+    corrections_file = folder / "correzioni.json"
+    if corrections_file.exists():
+        try:
+            import json
+            with open(corrections_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # Rimuovi chiavi che iniziano con _
+                return {k: v for k, v in data.items() if not k.startswith('_')}
+        except Exception:
+            pass
+    return {}
+
+
+def apply_corrections(data: dict, corrections: dict) -> dict:
+    """Applica correzioni manuali ai dati estratti."""
+    filename = data.get('_source', '')
+    if filename in corrections:
+        for key, value in corrections[filename].items():
+            data[key] = value
+    return data
+
+
 def normalize_on_behalf(value: str) -> str:
     """Normalizza varianti di 'Fyeld' in un unico valore."""
     if re.match(r"(?i)fyeld", value.strip()):
         return "Fyeld"
     return value.strip()
+
+
+def normalize_operator(value: str) -> str:
+    """Normalizza nomi operatori per unificare varianti (es. 'Bocchino Angelo' -> 'Angelo Bocchino')."""
+    if not value:
+        return ""
+    v = value.strip()
+    v_lower = v.lower()
+    # Unifica varianti di Angelo Bocchino
+    if 'angelo' in v_lower and 'bocchino' in v_lower:
+        return "Angelo Bocchino"
+    # Unifica varianti di Giacomo Mantovani
+    if 'giacomo' in v_lower and 'mantovani' in v_lower:
+        return "Giacomo Mantovani"
+    # Per altri operatori, normalizza capitalizzazione (Title Case)
+    return v.title()
+
+
+def normalize_company_name(value: str) -> str:
+    """Rimuove prefissi comuni come 'Az. Agricola', 'Azienda Agricola', etc."""
+    if not value:
+        return ""
+    v = value.strip()
+    # Pattern da rimuovere (case insensitive)
+    prefixes = [
+        r"^az\.?\s*agricola\s*",
+        r"^azienda\s+agricola\s*",
+        r"^società\s+agricola\s*",
+        r"^soc\.?\s*agricola\s*",
+        r"^azienda\s+agricola\s+zootecnica\s*",
+        r"^az\.?\s*agr\.?\s*",
+    ]
+    for pattern in prefixes:
+        v = re.sub(pattern, "", v, flags=re.IGNORECASE)
+    # Rimuovi spazi multipli e capitalizza
+    v = re.sub(r"\s+", " ", v).strip()
+    return v.title() if v else value.strip().title()
 
 
 def extract_report_data(pdf_path: Path) -> dict | None:
@@ -62,7 +123,7 @@ def extract_report_data(pdf_path: Path) -> dict | None:
             return None
         return value
 
-    data["companyName"] = find_field("Ragione Sociale") or ""
+    data["companyName"] = normalize_company_name(find_field("Ragione Sociale") or "")
     data["address"] = find_field("Indirizzo")
     data["phone"] = find_field("Telefono")
 
@@ -80,8 +141,8 @@ def extract_report_data(pdf_path: Path) -> dict | None:
     else:
         data["interventionDate"] = ""
 
-    data["operator1"] = find_field("Operatore 1") or ""
-    data["operator2"] = find_field("Operatore 2")
+    data["operator1"] = normalize_operator(find_field("Operatore 1") or "")
+    data["operator2"] = normalize_operator(find_field("Operatore 2") or "")
     data["interventionLocation"] = find_field("Luogo") or find_field("Luogo Intervento")
     data["requestedBy"] = find_field("Richiesto da")
     data["onBehalfOf"] = normalize_on_behalf(find_field("Per conto di") or "Fyeld")
@@ -104,10 +165,25 @@ def extract_report_data(pdf_path: Path) -> dict | None:
     else:
         data["kilometers"] = 0
 
-    # Grand total
-    total_match = re.search(r"Totale Intervento\s*([\d.,]+)\s*€", text)
+    # Grand total - supporta formati: "156,00 €", "156,00 EUR", "171.78 ·"
+    # Pattern 1: valore sulla stessa riga (vecchio formato)
+    total_match = re.search(r"Totale Intervento\s*([\d.,]+)\s*(?:€|EUR)", text)
+    # Pattern 2: valore su riga successiva (nuovo formato)
+    if not total_match:
+        total_match = re.search(r"Totale Intervento\n([\d.,]+)\s*(?:€|EUR|·)", text)
+    
     if total_match:
-        total_str = total_match.group(1).replace(".", "").replace(",", ".")
+        total_str = total_match.group(1).strip()
+        # Gestisce formati IT (156,00) e EN (171.78)
+        if '.' in total_str and ',' in total_str:
+            # Es: "1.234,56" (IT) -> rimuovo punti, virgola -> punto
+            if total_str.rfind(',') > total_str.rfind('.'):
+                total_str = total_str.replace('.', '').replace(',', '.')
+            else:
+                total_str = total_str.replace(',', '')
+        elif ',' in total_str:
+            total_str = total_str.replace(',', '.')
+        # Se solo punto, assumo decimale (es: 171.78)
         try:
             data["grandTotal"] = float(total_str)
         except ValueError:
@@ -173,7 +249,7 @@ def extract_report_from_image(image_path: Path) -> dict | None:
                         return next_line.strip()
         return None
 
-    data["companyName"] = find_after("Ragione Sociale") or ""
+    data["companyName"] = normalize_company_name(find_after("Ragione Sociale") or "")
     
     # Date: look for DD/MM/YYYY pattern
     date_match = re.search(r"(\d{2})/(\d{2})/(\d{4})", text)
@@ -233,15 +309,114 @@ def extract_report_from_image(image_path: Path) -> dict | None:
     return None
 
 
-def load_reports(folder: Path) -> list[dict]:
-    """Carica dati da PDF e immagini JPEG nella cartella."""
+def load_from_excel(excel_path: Path) -> list[dict]:
+    """Carica i dati dal file Excel compilato."""
+    try:
+        import openpyxl
+    except ImportError:
+        print("❌ openpyxl non installato. Esegui: pip install openpyxl")
+        return []
+    
+    if not excel_path.exists():
+        return []
+    
+    wb = openpyxl.load_workbook(excel_path, read_only=True, data_only=True)
+    ws = wb.active
+    
     reports = []
+    headers = [cell.value for cell in ws[1]]
+    
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not row[0]:  # Skip empty rows
+            continue
+        
+        data = {}
+        data["_source"] = row[0] or ""
+        data["interventionDateDisplay"] = row[1] or ""
+        
+        # Converti data display in formato ISO per sorting
+        date_str = row[1] or ""
+        if date_str:
+            match = re.match(r"(\d{2})/(\d{2})/(\d{4})", str(date_str))
+            if match:
+                data["interventionDate"] = f"{match.group(3)}-{match.group(2)}-{match.group(1)}"
+            else:
+                data["interventionDate"] = str(date_str)
+        else:
+            data["interventionDate"] = ""
+        
+        data["companyName"] = row[2] or ""
+        data["address"] = row[3] or ""
+        data["phone"] = row[4] or ""
+        data["operator1"] = row[5] or ""
+        data["operator2"] = row[6] or ""
+        data["onBehalfOf"] = row[7] or "Dinamica Generale"
+        data["interventionReason"] = row[8] or ""
+        data["problemFound"] = row[9] or ""
+        data["description"] = row[10] or ""
+        data["deviceType"] = row[11] or ""
+        data["serial1"] = row[12] or ""
+        data["year1"] = row[13] or ""
+        data["serial2"] = row[14] or ""
+        data["year2"] = row[15] or ""
+        data["serial3"] = row[16] or ""
+        data["year3"] = row[17] or ""
+        data["serial4"] = row[18] or ""
+        data["year4"] = row[19] or ""
+        data["spareParts"] = row[20] or ""
+        data["hoursWorked"] = float(row[21] or 0)
+        data["kilometers"] = float(row[22] or 0)
+        data["grandTotal"] = float(row[23] or 0)
+        data["hasTravelCost"] = str(row[24] or "").lower() == "sì"
+        data["notes"] = row[25] or ""
+        
+        reports.append(data)
+    
+    wb.close()
+    return reports
+
+
+def load_reports(folder: Path) -> list[dict]:
+    """Carica dati da Excel se esiste, altrimenti dai PDF."""
+    
+    # Prima prova a caricare dall'Excel
+    excel_path = folder / "rapporti.xlsx"
+    if excel_path.exists():
+        print(f"  📊 Caricamento da Excel: {excel_path.name}")
+        reports = load_from_excel(excel_path)
+        if reports:
+            # Verifica se ci sono nuovi PDF non presenti nell'Excel
+            excel_files = set(r.get("_source", "") for r in reports)
+            pdf_files = set(p.name for p in folder.glob("rapporto_*.pdf"))
+            new_pdfs = pdf_files - excel_files
+            
+            if new_pdfs:
+                print(f"  ⚠️  ATTENZIONE: {len(new_pdfs)} nuovi PDF non presenti nell'Excel:")
+                for pdf in sorted(new_pdfs)[:10]:  # Mostra max 10
+                    print(f"      - {pdf}")
+                if len(new_pdfs) > 10:
+                    print(f"      ... e altri {len(new_pdfs) - 10}")
+                print(f"  💡 Esegui genera_excel.py per aggiornare il file Excel")
+            
+            print(f"  ✅ Caricati {len(reports)} rapporti da Excel")
+            return reports
+        print(f"  ⚠️  Excel vuoto, fallback a PDF")
+    
+    # Fallback: carica dai PDF
+    reports = []
+    
+    # Carica correzioni manuali
+    corrections = load_corrections(folder)
+    if corrections:
+        print(f"  📝 Caricate {len(corrections)} correzioni da correzioni.json")
     
     # Load from PDFs
     pdf_files = sorted(folder.glob("rapporto_*.pdf"))
     for pdf_path in pdf_files:
         data = extract_report_data(pdf_path)
         if data:
+            # Applica correzioni manuali
+            data = apply_corrections(data, corrections)
             reports.append(data)
         else:
             print(f"  ⚠️  Ignorato (vecchio formato o vuoto): {pdf_path.name}")
@@ -453,13 +628,100 @@ def generate_dashboard_html(reports: list[dict]) -> str:
     padding: 40px;
     font-style: italic;
   }}
+  .bar-clickable {{
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }}
+  .bar-clickable:hover {{
+    opacity: 0.8;
+  }}
+  /* Modal */
+  .modal-overlay {{
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+  }}
+  .modal-overlay.active {{
+    display: flex;
+  }}
+  .modal-content {{
+    background: white;
+    border-radius: 12px;
+    padding: 25px;
+    max-width: 90%;
+    max-height: 80%;
+    overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    min-width: 600px;
+  }}
+  .modal-header {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #eee;
+  }}
+  .modal-header h2 {{
+    font-size: 1.2rem;
+    color: #333;
+  }}
+  .modal-close {{
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #999;
+    padding: 5px;
+  }}
+  .modal-close:hover {{
+    color: #333;
+  }}
+  .modal-table {{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }}
+  .modal-table th {{
+    text-align: left;
+    padding: 10px;
+    background: #f8f9fa;
+    font-weight: 600;
+    border-bottom: 2px solid #e8e8e8;
+  }}
+  .modal-table td {{
+    padding: 10px;
+    border-bottom: 1px solid #f0f0f0;
+  }}
+  .modal-table tr:hover td {{
+    background: #f8f9ff;
+  }}
   @media (max-width: 768px) {{
     .charts-grid {{ grid-template-columns: 1fr; }}
     .filters {{ flex-direction: column; }}
+    .modal-content {{ min-width: auto; width: 95%; }}
   }}
 </style>
 </head>
 <body>
+
+<!-- Modal per dettaglio interventi -->
+<div class="modal-overlay" id="detailModal" onclick="closeModal(event)">
+  <div class="modal-content" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2 id="modalTitle">Dettaglio Interventi</h2>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div id="modalBody"></div>
+  </div>
+</div>
 
 <h1>📊 Dashboard Assistenza</h1>
 <p class="subtitle">Generata il {generated_at} — {len(reports)} rapporti caricati</p>
@@ -517,30 +779,16 @@ def generate_dashboard_html(reports: list[dict]) -> str:
     <div id="chartClients"></div>
   </div>
   <div class="chart-card">
-    <h3>Per motivo intervento</h3>
-    <div id="chartReasons"></div>
-  </div>
-  <div class="chart-card">
     <h3>Per problema riscontrato</h3>
     <div id="chartProblems"></div>
   </div>
   <div class="chart-card">
-    <h3>Dettaglio rapporti</h3>
-    <div style="max-height: 400px; overflow-y: auto;">
-      <table id="reportTable">
-        <thead>
-          <tr>
-            <th>Data</th>
-            <th>Cliente</th>
-            <th>Motivo</th>
-            <th>Ore</th>
-            <th>Km</th>
-            <th>Totale</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
+    <h3>Dispositivi per anno di produzione</h3>
+    <div id="chartDeviceYears"></div>
+  </div>
+  <div class="chart-card">
+    <h3>Problema riscontrato per anno dispositivo</h3>
+    <div id="chartReasonByYear"></div>
   </div>
 </div>
 
@@ -612,16 +860,17 @@ function render() {{
   renderKPIs(reports);
   renderMonthlyChart(reports);
   renderClientsChart(reports);
-  renderReasonsChart(reports);
   renderProblemsChart(reports);
-  renderTable(reports);
+  renderDeviceYearsChart(reports);
+  renderReasonByYearChart(reports);
 }}
 
 // Helper: check if report belongs to Angelo Bocchino
+// I nomi operatori sono già normalizzati in Python, quindi basta confrontare
 function isAngeloBocchino(report) {{
-  const op1 = (report.operator1 || '').toLowerCase().trim();
-  const op2 = (report.operator2 || '').toLowerCase().trim();
-  return op1.includes('angelo bocchino') || op2.includes('angelo bocchino');
+  const op1 = (report.operator1 || '').trim();
+  const op2 = (report.operator2 || '').trim();
+  return op1 === 'Angelo Bocchino' || op2 === 'Angelo Bocchino';
 }}
 
 // Calculate total expenses for a set of reports
@@ -691,7 +940,7 @@ function renderKPIs(reports) {{
   updateExpenseCard(reports);
 }}
 
-function renderBarChart(containerId, data, maxBars) {{
+function renderBarChart(containerId, data, maxBars, filterType) {{
   const container = document.getElementById(containerId);
   if (data.length === 0) {{
     container.innerHTML = '<div class="no-data">Nessun dato</div>';
@@ -700,13 +949,104 @@ function renderBarChart(containerId, data, maxBars) {{
   const sorted = data.sort((a, b) => b.value - a.value).slice(0, maxBars || 10);
   const maxVal = Math.max(...sorted.map(d => d.value), 1);
   container.innerHTML = sorted.map(d => `
-    <div class="bar-container">
+    <div class="bar-container bar-clickable" onclick="showDetail('${{filterType || containerId}}', '${{d.label.replace(/'/g, "\\\\'")}}')">
       <div class="bar-label">${{d.label}}</div>
       <div class="bar" style="width: ${{(d.value / maxVal * 100).toFixed(1)}}%"></div>
       <div class="bar-value">${{d.value}}</div>
     </div>
   `).join('');
 }}
+
+// Modal functions
+function showDetail(filterType, value) {{
+  const reports = getFilteredReports();
+  let filtered = [];
+  let title = '';
+  
+  switch(filterType) {{
+    case 'chartMonthly':
+      // value è tipo "Lug 2026" - devo convertire in YYYY-MM
+      const monthMap = {{'Gen':'01','Feb':'02','Mar':'03','Apr':'04','Mag':'05','Giu':'06','Lug':'07','Ago':'08','Set':'09','Ott':'10','Nov':'11','Dic':'12'}};
+      const parts = value.split(' ');
+      if (parts.length === 2) {{
+        const mm = monthMap[parts[0]] || '01';
+        const yyyy = parts[1];
+        const ym = `${{yyyy}}-${{mm}}`;
+        filtered = reports.filter(r => r.interventionDate?.startsWith(ym));
+      }}
+      title = `Interventi di ${{value}}`;
+      break;
+    case 'chartClients':
+      filtered = reports.filter(r => (r.companyName || '').substring(0, 25) === value || r.companyName === value);
+      title = `Interventi per ${{value}}`;
+      break;
+    case 'chartReasons':
+      filtered = reports.filter(r => (r.interventionReason || 'Non specificato') === value);
+      title = `Interventi: ${{value}}`;
+      break;
+    case 'chartProblems':
+      filtered = reports.filter(r => (r.problemFound || 'Non specificato') === value);
+      title = `Problema: ${{value}}`;
+      break;
+    case 'chartDeviceYears':
+      filtered = reports.filter(r => 
+        r.year1 == value || r.year2 == value || r.year3 == value || r.year4 == value
+      );
+      title = `Dispositivi anno ${{value}}`;
+      break;
+    default:
+      filtered = reports;
+      title = 'Dettaglio interventi';
+  }}
+  
+  document.getElementById('modalTitle').textContent = `${{title}} (${{filtered.length}})`;
+  
+  let html = `<table class="modal-table">
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Cliente</th>
+        <th>Motivo</th>
+        <th>Problema</th>
+        <th>Seriali</th>
+        <th>Ore</th>
+        <th>Km</th>
+        <th>Totale</th>
+      </tr>
+    </thead>
+    <tbody>`;
+  
+  filtered.sort((a, b) => (b.interventionDate || '').localeCompare(a.interventionDate || ''));
+  
+  filtered.forEach(r => {{
+    const serials = [r.serial1, r.serial2, r.serial3, r.serial4].filter(s => s).join(', ');
+    html += `<tr>
+      <td>${{formatDate(r.interventionDate)}}</td>
+      <td>${{r.companyName || ''}}</td>
+      <td>${{r.interventionReason || ''}}</td>
+      <td>${{r.problemFound || ''}}</td>
+      <td style="font-size: 0.75rem;">${{serials}}</td>
+      <td>${{r.hoursWorked || 0}}</td>
+      <td>${{r.kilometers || 0}}</td>
+      <td>${{(r.grandTotal || 0).toLocaleString('it-IT', {{minimumFractionDigits:2}})}}&euro;</td>
+    </tr>`;
+  }});
+  
+  html += '</tbody></table>';
+  document.getElementById('modalBody').innerHTML = html;
+  document.getElementById('detailModal').classList.add('active');
+}}
+
+function closeModal(event) {{
+  if (!event || event.target.id === 'detailModal') {{
+    document.getElementById('detailModal').classList.remove('active');
+  }}
+}}
+
+// Close modal on Escape key
+document.addEventListener('keydown', (e) => {{
+  if (e.key === 'Escape') closeModal();
+}});
 
 function renderMonthlyChart(reports) {{
   const monthly = {{}};
@@ -717,7 +1057,7 @@ function renderMonthlyChart(reports) {{
   const data = Object.entries(monthly)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([k, v]) => ({{ label: formatMonth(k), value: v }}));
-  renderBarChart('chartMonthly', data, 12);
+  renderBarChart('chartMonthly', data, 12, 'chartMonthly');
 }}
 
 function renderClientsChart(reports) {{
@@ -727,7 +1067,7 @@ function renderClientsChart(reports) {{
     counts[name] = (counts[name] || 0) + 1;
   }});
   const data = Object.entries(counts).map(([k, v]) => ({{ label: k.substring(0, 25), value: v }}));
-  renderBarChart('chartClients', data, 8);
+  renderBarChart('chartClients', data, 8, 'chartClients');
 }}
 
 function renderReasonsChart(reports) {{
@@ -737,7 +1077,7 @@ function renderReasonsChart(reports) {{
     counts[reason] = (counts[reason] || 0) + 1;
   }});
   const data = Object.entries(counts).map(([k, v]) => ({{ label: k, value: v }}));
-  renderBarChart('chartReasons', data, 5);
+  renderBarChart('chartReasons', data, 5, 'chartReasons');
 }}
 
 function renderProblemsChart(reports) {{
@@ -747,7 +1087,100 @@ function renderProblemsChart(reports) {{
     counts[problem] = (counts[problem] || 0) + 1;
   }});
   const data = Object.entries(counts).map(([k, v]) => ({{ label: k, value: v }}));
-  renderBarChart('chartProblems', data, 10);
+  renderBarChart('chartProblems', data, 10, 'chartProblems');
+}}
+
+function renderDeviceYearsChart(reports) {{
+  const counts = {{}};
+  reports.forEach(r => {{
+    // Raccogli tutti gli anni dei dispositivi (year1, year2, year3, year4)
+    const years = [r.year1, r.year2, r.year3, r.year4].filter(y => y && y !== '');
+    years.forEach(year => {{
+      const y = String(year).trim();
+      if (y) {{
+        counts[y] = (counts[y] || 0) + 1;
+      }}
+    }});
+  }});
+  const data = Object.entries(counts)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => ({{ label: k, value: v }}));
+  renderBarChart('chartDeviceYears', data, 15, 'chartDeviceYears');
+}}
+
+function renderReasonByYearChart(reports) {{
+  // Crea matrice: anno -> problema riscontrato -> count
+  const matrix = {{}};
+  const allProblems = new Set();
+  
+  reports.forEach(r => {{
+    const years = [r.year1, r.year2, r.year3, r.year4].filter(y => y && y !== '');
+    const problem = r.problemFound || 'Non specificato';
+    allProblems.add(problem);
+    
+    years.forEach(year => {{
+      const y = String(year).trim();
+      if (y) {{
+        if (!matrix[y]) matrix[y] = {{}};
+        matrix[y][problem] = (matrix[y][problem] || 0) + 1;
+      }}
+    }});
+  }});
+  
+  // Genera HTML con barre raggruppate per anno
+  const container = document.getElementById('chartReasonByYear');
+  const years = Object.keys(matrix).sort();
+  
+  if (years.length === 0) {{
+    container.innerHTML = '<div class="no-data">Nessun dato</div>';
+    return;
+  }}
+  
+  // Colori per i problemi
+  const colors = {{
+    'Installazione': '#4CAF50',
+    'Guasto meccanico': '#FF5722',
+    'Guasto elettrico': '#f44336',
+    'Guasto elettronico': '#E91E63',
+    'Taratura': '#2196F3',
+    'Aggiornamento software': '#00BCD4',
+    'Altro': '#FF9800',
+    'Non specificato': '#9C27B0'
+  }};
+  
+  let html = '<div style="font-size: 0.75rem;">';
+  
+  // Legenda
+  html += '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">';
+  [...allProblems].sort().forEach(problem => {{
+    const color = colors[problem] || '#607D8B';
+    html += `<div style="display: flex; align-items: center; gap: 4px;">
+      <div style="width: 12px; height: 12px; background: ${{color}}; border-radius: 2px;"></div>
+      <span>${{problem}}</span>
+    </div>`;
+  }});
+  html += '</div>';
+  
+  // Grafico per anno
+  years.forEach(year => {{
+    const problemCounts = matrix[year];
+    const total = Object.values(problemCounts).reduce((a, b) => a + b, 0);
+    
+    html += `<div style="margin-bottom: 12px;">
+      <div style="font-weight: 600; margin-bottom: 4px;">${{year}} <span style="color: #666; font-weight: normal;">(${{total}} interventi)</span></div>
+      <div style="display: flex; height: 24px; border-radius: 4px; overflow: hidden;">`;
+    
+    Object.entries(problemCounts).sort(([a], [b]) => a.localeCompare(b)).forEach(([problem, count]) => {{
+      const pct = (count / total * 100).toFixed(1);
+      const color = colors[problem] || '#607D8B';
+      html += `<div style="width: ${{pct}}%; background: ${{color}}; display: flex; align-items: center; justify-content: center; color: white; font-size: 0.7rem; min-width: 20px;" title="${{problem}}: ${{count}}">${{count}}</div>`;
+    }});
+    
+    html += '</div></div>';
+  }});
+  
+  html += '</div>';
+  container.innerHTML = html;
 }}
 
 function renderTable(reports) {{
