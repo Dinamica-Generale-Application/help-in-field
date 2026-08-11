@@ -364,10 +364,14 @@ def load_from_excel(excel_path: Path) -> list[dict]:
         data["serial4"] = row[18] or ""
         data["year4"] = row[19] or ""
         data["spareParts"] = row[20] or ""
-        data["hoursWorked"] = float(row[21] or 0)
-        data["kilometers"] = float(row[22] or 0)
-        data["grandTotal"] = float(row[23] or 0)
-        data["hasTravelCost"] = str(row[24] or "").lower() == "sì"
+        data["sparePartsQty"] = row[21] or ""
+        data["sparePartsPrice"] = float(row[22] or 0) if row[22] else 0
+        data["warranty"] = str(row[23] or "").strip()
+        data["hoursWorked"] = float(row[24] or 0)
+        data["kilometers"] = float(row[25] or 0)
+        data["grandTotal"] = float(row[26] or 0)
+        data["hasTravelCost"] = str(row[27] or "").lower() == "sì"
+        data["notes"] = row[28] or ""
         data["notes"] = row[25] or ""
         
         reports.append(data)
@@ -783,6 +787,10 @@ def generate_dashboard_html(reports: list[dict]) -> str:
     <div id="chartProblems"></div>
   </div>
   <div class="chart-card">
+    <h3>Interventi in garanzia</h3>
+    <div id="chartWarranty"></div>
+  </div>
+  <div class="chart-card">
     <h3>Dispositivi per anno di produzione</h3>
     <div id="chartDeviceYears"></div>
   </div>
@@ -861,6 +869,7 @@ function render() {{
   renderMonthlyChart(reports);
   renderClientsChart(reports);
   renderProblemsChart(reports);
+  renderWarrantyChart(reports);
   renderDeviceYearsChart(reports);
   renderReasonByYearChart(reports);
 }}
@@ -896,11 +905,14 @@ function setExpenseTab(tab) {{
   updateExpenseCard(reports);
 }}
 
+// Compenso fisso Angelo Bocchino per 3 mesi di supporto in campo
+const ANGELO_FIXED_COMPENSATION = 20000;
+
 function updateExpenseCard(reports) {{
   const angeloReports = reports.filter(isAngeloBocchino);
   const altriReports = reports.filter(r => !isAngeloBocchino(r));
   
-  const angeloExpenses = calcExpenses(angeloReports);
+  const angeloExpenses = calcExpenses(angeloReports) + ANGELO_FIXED_COMPENSATION;
   const altriExpenses = calcExpenses(altriReports);
   
   const currentExpenses = expenseTab === 'angelo' ? angeloExpenses : altriExpenses;
@@ -913,6 +925,7 @@ function updateExpenseCard(reports) {{
     </div>
     <div class="kpi-value">${{currentExpenses.toLocaleString('it-IT', {{minimumFractionDigits:2, maximumFractionDigits:2}})}}&euro;</div>
     <div class="kpi-label">Spese totali</div>
+    ${{expenseTab === 'angelo' ? '<div style="font-size: 0.7rem; color: #666; margin-top: 4px;">(incl. 20.000€ compenso fisso)</div>' : ''}}
   `;
 }}
 
@@ -922,6 +935,17 @@ function renderKPIs(reports) {{
   const totalKm = reports.reduce((s, r) => s + (r.kilometers || 0), 0);
   const avgHoursPerIntervention = totalInterventions > 0 ? (totalHours / totalInterventions).toFixed(1) : '0';
   const uniqueClients = new Set(reports.map(r => r.companyName)).size;
+  
+  // Totale costi ricambi
+  const totalSpareParts = reports.reduce((s, r) => s + (parseFloat(r.sparePartsPrice) || 0), 0);
+  
+  // Costi ricambi per interventi in garanzia
+  const warrantySparePartsCost = reports
+    .filter(r => {{
+      const w = (r.warranty || '').toLowerCase().trim();
+      return w === 'sì' || w === 'si' || w === 'yes' || w === 's';
+    }})
+    .reduce((s, r) => s + (parseFloat(r.sparePartsPrice) || 0), 0);
 
   // Stima ore di viaggio totali: km / 55 km/h
   const travelHours = totalKm / 55;
@@ -931,6 +955,11 @@ function renderKPIs(reports) {{
     <div class="kpi-card"><div class="kpi-value">${{totalHours.toFixed(1)}}</div><div class="kpi-label">Ore lavorate</div></div>
     <div class="kpi-card"><div class="kpi-value">${{travelHours.toFixed(1)}}</div><div class="kpi-label">Ore viaggio (stima)</div></div>
     <div class="kpi-card"><div class="kpi-value">${{totalKm.toLocaleString('it-IT')}}</div><div class="kpi-label">Km totali</div></div>
+    <div class="kpi-card">
+      <div class="kpi-value">${{totalSpareParts.toLocaleString('it-IT', {{minimumFractionDigits: 2, maximumFractionDigits: 2}})}}&euro;</div>
+      <div class="kpi-label">Costo ricambi</div>
+      <div style="font-size: 0.75rem; color: #4CAF50; margin-top: 4px;">di cui in garanzia: ${{warrantySparePartsCost.toLocaleString('it-IT', {{minimumFractionDigits: 2, maximumFractionDigits: 2}})}}&euro;</div>
+    </div>
     <div class="kpi-card" id="expenseCard"></div>
     <div class="kpi-card"><div class="kpi-value">${{avgHoursPerIntervention}}</div><div class="kpi-label">Ore medie / intervento</div></div>
     <div class="kpi-card"><div class="kpi-value">${{uniqueClients}}</div><div class="kpi-label">Clienti unici</div></div>
@@ -940,13 +969,14 @@ function renderKPIs(reports) {{
   updateExpenseCard(reports);
 }}
 
-function renderBarChart(containerId, data, maxBars, filterType) {{
+function renderBarChart(containerId, data, maxBars, filterType, preserveOrder) {{
   const container = document.getElementById(containerId);
   if (data.length === 0) {{
     container.innerHTML = '<div class="no-data">Nessun dato</div>';
     return;
   }}
-  const sorted = data.sort((a, b) => b.value - a.value).slice(0, maxBars || 10);
+  // Se preserveOrder è true, mantieni l'ordine originale, altrimenti ordina per valore
+  const sorted = preserveOrder ? data.slice(0, maxBars || 10) : data.sort((a, b) => b.value - a.value).slice(0, maxBars || 10);
   const maxVal = Math.max(...sorted.map(d => d.value), 1);
   container.innerHTML = sorted.map(d => `
     <div class="bar-container bar-clickable" onclick="showDetail('${{filterType || containerId}}', '${{d.label.replace(/'/g, "\\\\'")}}')">
@@ -999,6 +1029,45 @@ function showDetail(filterType, value) {{
       title = 'Dettaglio interventi';
   }}
   
+  document.getElementById('modalTitle').textContent = `${{title}} (${{filtered.length}})`;
+  
+  let html = `<table class="modal-table">
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Cliente</th>
+        <th>Motivo</th>
+        <th>Problema</th>
+        <th>Seriali</th>
+        <th>Ore</th>
+        <th>Km</th>
+        <th>Totale</th>
+      </tr>
+    </thead>
+    <tbody>`;
+  
+  filtered.sort((a, b) => (b.interventionDate || '').localeCompare(a.interventionDate || ''));
+  
+  filtered.forEach(r => {{
+    const serials = [r.serial1, r.serial2, r.serial3, r.serial4].filter(s => s).join(', ');
+    html += `<tr>
+      <td>${{formatDate(r.interventionDate)}}</td>
+      <td>${{r.companyName || ''}}</td>
+      <td>${{r.interventionReason || ''}}</td>
+      <td>${{r.problemFound || ''}}</td>
+      <td style="font-size: 0.75rem;">${{serials}}</td>
+      <td>${{r.hoursWorked || 0}}</td>
+      <td>${{r.kilometers || 0}}</td>
+      <td>${{(r.grandTotal || 0).toLocaleString('it-IT', {{minimumFractionDigits:2}})}}&euro;</td>
+    </tr>`;
+  }});
+  
+  html += '</tbody></table>';
+  document.getElementById('modalBody').innerHTML = html;
+  document.getElementById('detailModal').classList.add('active');
+}}
+
+function showModalWithReports(title, filtered) {{
   document.getElementById('modalTitle').textContent = `${{title}} (${{filtered.length}})`;
   
   let html = `<table class="modal-table">
@@ -1090,22 +1159,107 @@ function renderProblemsChart(reports) {{
   renderBarChart('chartProblems', data, 10, 'chartProblems');
 }}
 
+function renderWarrantyChart(reports) {{
+  const container = document.getElementById('chartWarranty');
+  
+  let inGaranzia = 0;
+  let fuoriGaranzia = 0;
+  let nonSpecificato = 0;
+  
+  reports.forEach(r => {{
+    const warranty = (r.warranty || '').toLowerCase().trim();
+    if (warranty === 'sì' || warranty === 'si' || warranty === 'yes' || warranty === 's') {{
+      inGaranzia++;
+    }} else if (warranty === 'no' || warranty === 'n') {{
+      fuoriGaranzia++;
+    }} else {{
+      nonSpecificato++;
+    }}
+  }});
+  
+  const total = reports.length;
+  if (total === 0) {{
+    container.innerHTML = '<div class="no-data">Nessun dato</div>';
+    return;
+  }}
+  
+  // Calcola percentuali
+  const pctGaranzia = (inGaranzia / total * 100).toFixed(1);
+  const pctFuori = (fuoriGaranzia / total * 100).toFixed(1);
+  const pctNonSpec = (nonSpecificato / total * 100).toFixed(1);
+  
+  let html = '<div style="display: flex; flex-direction: column; gap: 12px;">';
+  
+  // Barra In garanzia (verde)
+  html += `<div class="bar-container bar-clickable" onclick="showWarrantyDetail('sì')">
+    <div class="bar-label">In garanzia</div>
+    <div class="bar" style="width: ${{pctGaranzia}}%; background: linear-gradient(90deg, #4CAF50, #81C784);"></div>
+    <div class="bar-value">${{inGaranzia}} (${{pctGaranzia}}%)</div>
+  </div>`;
+  
+  // Barra Fuori garanzia (rosso)
+  html += `<div class="bar-container bar-clickable" onclick="showWarrantyDetail('no')">
+    <div class="bar-label">Fuori garanzia</div>
+    <div class="bar" style="width: ${{pctFuori}}%; background: linear-gradient(90deg, #f44336, #e57373);"></div>
+    <div class="bar-value">${{fuoriGaranzia}} (${{pctFuori}}%)</div>
+  </div>`;
+  
+  // Barra Non specificato (grigio) - solo se ci sono
+  if (nonSpecificato > 0) {{
+    html += `<div class="bar-container bar-clickable" onclick="showWarrantyDetail('')">
+      <div class="bar-label">Non specificato</div>
+      <div class="bar" style="width: ${{pctNonSpec}}%; background: linear-gradient(90deg, #9E9E9E, #BDBDBD);"></div>
+      <div class="bar-value">${{nonSpecificato}} (${{pctNonSpec}}%)</div>
+    </div>`;
+  }}
+  
+  html += '</div>';
+  container.innerHTML = html;
+}}
+
+function showWarrantyDetail(warrantyValue) {{
+  const reports = getFilteredReports();
+  let filtered = [];
+  let title = '';
+  
+  if (warrantyValue === 'sì') {{
+    filtered = reports.filter(r => {{
+      const w = (r.warranty || '').toLowerCase().trim();
+      return w === 'sì' || w === 'si' || w === 'yes' || w === 's';
+    }});
+    title = 'Interventi in garanzia';
+  }} else if (warrantyValue === 'no') {{
+    filtered = reports.filter(r => {{
+      const w = (r.warranty || '').toLowerCase().trim();
+      return w === 'no' || w === 'n';
+    }});
+    title = 'Interventi fuori garanzia';
+  }} else {{
+    filtered = reports.filter(r => {{
+      const w = (r.warranty || '').toLowerCase().trim();
+      return w !== 'sì' && w !== 'si' && w !== 'yes' && w !== 's' && w !== 'no' && w !== 'n';
+    }});
+    title = 'Interventi - garanzia non specificata';
+  }}
+  
+  showModalWithReports(title, filtered);
+}}
+
 function renderDeviceYearsChart(reports) {{
   const counts = {{}};
   reports.forEach(r => {{
     // Raccogli tutti gli anni dei dispositivi (year1, year2, year3, year4)
     const years = [r.year1, r.year2, r.year3, r.year4].filter(y => y && y !== '');
-    years.forEach(year => {{
-      const y = String(year).trim();
-      if (y) {{
-        counts[y] = (counts[y] || 0) + 1;
-      }}
+    // Usa Set per contare ogni anno una sola volta per intervento
+    const uniqueYears = [...new Set(years.map(y => String(y).trim()).filter(y => y))];
+    uniqueYears.forEach(year => {{
+      counts[year] = (counts[year] || 0) + 1;
     }});
   }});
   const data = Object.entries(counts)
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => b.localeCompare(a))  // Ordine decrescente per anno
     .map(([k, v]) => ({{ label: k, value: v }}));
-  renderBarChart('chartDeviceYears', data, 15, 'chartDeviceYears');
+  renderBarChart('chartDeviceYears', data, 15, 'chartDeviceYears', true);  // preserveOrder=true per mantenere ordine decrescente
 }}
 
 function renderReasonByYearChart(reports) {{
@@ -1118,18 +1272,17 @@ function renderReasonByYearChart(reports) {{
     const problem = r.problemFound || 'Non specificato';
     allProblems.add(problem);
     
-    years.forEach(year => {{
-      const y = String(year).trim();
-      if (y) {{
-        if (!matrix[y]) matrix[y] = {{}};
-        matrix[y][problem] = (matrix[y][problem] || 0) + 1;
-      }}
+    // Usa Set per contare ogni anno una sola volta per intervento
+    const uniqueYears = [...new Set(years.map(y => String(y).trim()).filter(y => y))];
+    uniqueYears.forEach(year => {{
+      if (!matrix[year]) matrix[year] = {{}};
+      matrix[year][problem] = (matrix[year][problem] || 0) + 1;
     }});
   }});
   
   // Genera HTML con barre raggruppate per anno
   const container = document.getElementById('chartReasonByYear');
-  const years = Object.keys(matrix).sort();
+  const years = Object.keys(matrix).sort().reverse();  // Ordine decrescente
   
   if (years.length === 0) {{
     container.innerHTML = '<div class="no-data">Nessun dato</div>';

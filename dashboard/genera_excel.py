@@ -230,6 +230,9 @@ def generate_excel(reports: list[dict], output_path: Path):
         ("Seriale 4", 15),
         ("Anno 4", 8),
         ("Ricambi utilizzati", 35),
+        ("qty", 8),
+        ("price", 10),
+        ("Garanzia", 10),
         ("Ore lavorate", 12),
         ("Km", 8),
         ("Totale €", 12),
@@ -285,6 +288,9 @@ def generate_excel(reports: list[dict], output_path: Path):
             report.get("serial4", ""),
             report.get("year4", ""),
             report.get("spareParts", ""),  # Ricambi utilizzati
+            report.get("sparePartsQty", ""),  # qty
+            report.get("sparePartsPrice", ""),  # price
+            report.get("warranty", ""),  # Garanzia
             report.get("hoursWorked", 0),
             report.get("kilometers", 0),
             report.get("grandTotal", 0),
@@ -303,7 +309,7 @@ def generate_excel(reports: list[dict], output_path: Path):
     for row_idx in range(2, len(reports) + 2):
         address_cell = ws.cell(row=row_idx, column=4)  # Indirizzo
         serial1_cell = ws.cell(row=row_idx, column=13)  # Seriale 1
-        km_cell = ws.cell(row=row_idx, column=23)  # Km
+        km_cell = ws.cell(row=row_idx, column=26)  # Km (colonna Z dopo aggiunta Garanzia)
         
         # Evidenzia se manca indirizzo
         if not address_cell.value:
@@ -449,6 +455,9 @@ def append_to_excel(excel_path: Path, new_reports: list[dict]):
             report.get("serial4", ""),
             report.get("year4", ""),
             report.get("spareParts", ""),
+            report.get("sparePartsQty", ""),  # qty
+            report.get("sparePartsPrice", ""),  # price
+            report.get("warranty", ""),  # Garanzia
             report.get("hoursWorked", 0),
             report.get("kilometers", 0),
             report.get("grandTotal", 0),
@@ -466,8 +475,8 @@ def append_to_excel(excel_path: Path, new_reports: list[dict]):
             ws.cell(row=last_row, column=4).fill = yellow_fill
         if not row_data[12]:  # Seriale 1
             ws.cell(row=last_row, column=13).fill = yellow_fill
-        if row_data[22] == 0:  # Km
-            ws.cell(row=last_row, column=23).fill = yellow_fill
+        if row_data[25] == 0:  # Km (indice 25 nella lista row_data)
+            ws.cell(row=last_row, column=26).fill = yellow_fill
     
     wb.save(excel_path)
     wb.close()
