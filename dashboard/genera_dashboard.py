@@ -882,7 +882,7 @@ function isAngeloBocchino(report) {{
   return op1 === 'Angelo Bocchino' || op2 === 'Angelo Bocchino';
 }}
 
-// Calculate total expenses for a set of reports
+// Calculate total expenses for a set of reports (include spare parts cost)
 function calcExpenses(reports) {{
   let total = 0;
   reports.forEach(r => {{
@@ -890,6 +890,8 @@ function calcExpenses(reports) {{
     if (!r.hasTravelCost && r.kilometers > 0) {{
       reportTotal += (r.kilometers / 55) * 60;
     }}
+    // Aggiungi costo ricambi
+    reportTotal += parseFloat(r.sparePartsPrice) || 0;
     total += reportTotal;
   }});
   return total;
@@ -939,13 +941,24 @@ function renderKPIs(reports) {{
   // Totale costi ricambi
   const totalSpareParts = reports.reduce((s, r) => s + (parseFloat(r.sparePartsPrice) || 0), 0);
   
+  // Helper per verificare garanzia
+  const isWarranty = (r) => {{
+    const w = (r.warranty || '').toLowerCase().trim();
+    return w === 'sì' || w === 'si' || w === 'yes' || w === 's';
+  }};
+  
   // Costi ricambi per interventi in garanzia
-  const warrantySparePartsCost = reports
-    .filter(r => {{
-      const w = (r.warranty || '').toLowerCase().trim();
-      return w === 'sì' || w === 'si' || w === 'yes' || w === 's';
-    }})
-    .reduce((s, r) => s + (parseFloat(r.sparePartsPrice) || 0), 0);
+  const warrantySparePartsCost = reports.filter(isWarranty).reduce((s, r) => s + (parseFloat(r.sparePartsPrice) || 0), 0);
+  
+  // Interventi in garanzia e non
+  const warrantyReports = reports.filter(isWarranty);
+  const nonWarrantyReports = reports.filter(r => !isWarranty(r));
+  
+  // Spese totali in garanzia (interventi + ricambi)
+  const warrantyExpenses = calcExpenses(warrantyReports);
+  
+  // Spese totali NON in garanzia (interventi + ricambi)
+  const nonWarrantyExpenses = calcExpenses(nonWarrantyReports);
 
   // Stima ore di viaggio totali: km / 55 km/h
   const travelHours = totalKm / 55;
@@ -961,6 +974,16 @@ function renderKPIs(reports) {{
       <div style="font-size: 0.75rem; color: #4CAF50; margin-top: 4px;">di cui in garanzia: ${{warrantySparePartsCost.toLocaleString('it-IT', {{minimumFractionDigits: 2, maximumFractionDigits: 2}})}}&euro;</div>
     </div>
     <div class="kpi-card" id="expenseCard"></div>
+    <div class="kpi-card" style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);">
+      <div class="kpi-value" style="color: #2e7d32;">${{warrantyExpenses.toLocaleString('it-IT', {{minimumFractionDigits: 2, maximumFractionDigits: 2}})}}&euro;</div>
+      <div class="kpi-label">Spese IN garanzia</div>
+      <div style="font-size: 0.7rem; color: #666; margin-top: 4px;">${{warrantyReports.length}} interventi</div>
+    </div>
+    <div class="kpi-card" style="background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);">
+      <div class="kpi-value" style="color: #c62828;">${{nonWarrantyExpenses.toLocaleString('it-IT', {{minimumFractionDigits: 2, maximumFractionDigits: 2}})}}&euro;</div>
+      <div class="kpi-label">Spese NON in garanzia</div>
+      <div style="font-size: 0.7rem; color: #666; margin-top: 4px;">${{nonWarrantyReports.length}} interventi</div>
+    </div>
     <div class="kpi-card"><div class="kpi-value">${{avgHoursPerIntervention}}</div><div class="kpi-label">Ore medie / intervento</div></div>
     <div class="kpi-card"><div class="kpi-value">${{uniqueClients}}</div><div class="kpi-label">Clienti unici</div></div>
   `;
